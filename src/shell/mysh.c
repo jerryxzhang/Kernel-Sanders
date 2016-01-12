@@ -1,3 +1,5 @@
+typedef void* yyscan_t;
+
 #include <unistd.h>
 #include <pwd.h>
 #include <string.h>
@@ -12,7 +14,6 @@
 
 #define MAX_COMMAND_SIZE 1000
 
-typedef void* yyscan_t;
 
 int yyparse(Command **command, yyscan_t scanner);
 

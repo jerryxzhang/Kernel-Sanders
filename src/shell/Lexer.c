@@ -467,7 +467,9 @@ char *yytext;
 /*
  * Lexer.l file
  */
- 
+
+typedef void* yyscan_t;
+
 #include "Command.h"
 #include "Parser.h"
 
@@ -475,7 +477,7 @@ char *yytext;
 #include <stdlib.h>
 #include <string.h>
  
-#line 479 "Lexer.c"
+#line 481 "Lexer.c"
 
 #define INITIAL 0
 
@@ -662,10 +664,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 26 "Lexer.l"
+#line 28 "Lexer.l"
 
  
-#line 669 "Lexer.c"
+#line 671 "Lexer.c"
 
 	if ( !(yy_init) )
 		{
@@ -751,28 +753,28 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 28 "Lexer.l"
+#line 30 "Lexer.l"
 { /* Skip blanks. */ }
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 30 "Lexer.l"
+#line 32 "Lexer.l"
 { return TOKEN_PIPE; }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 31 "Lexer.l"
+#line 33 "Lexer.l"
 { return TOKEN_IN; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 32 "Lexer.l"
+#line 34 "Lexer.l"
 { return TOKEN_OUT; }
 	YY_BREAK
 case 5:
 /* rule 5 can match eol */
 YY_RULE_SETUP
-#line 34 "Lexer.l"
+#line 36 "Lexer.l"
 {
     // Strip the quotes on the string before returning
     char *new_name = (char*) calloc(strlen(yytext) - 1, sizeof(char));
@@ -782,7 +784,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 40 "Lexer.l"
+#line 42 "Lexer.l"
 { 
     char *new_name = (char*) calloc(strlen(yytext) + 1, sizeof(char));
     strcpy(new_name, yytext);
@@ -791,10 +793,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 46 "Lexer.l"
+#line 48 "Lexer.l"
 ECHO;
 	YY_BREAK
-#line 798 "Lexer.c"
+#line 800 "Lexer.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1792,7 +1794,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 46 "Lexer.l"
+#line 48 "Lexer.l"
 
 
 

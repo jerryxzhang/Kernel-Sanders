@@ -3,7 +3,9 @@
 /*
  * Lexer.l file
  */
- 
+
+typedef void* yyscan_t;
+
 #include "Command.h"
 #include "Parser.h"
 
