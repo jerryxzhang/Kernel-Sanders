@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <pwd.h>
 #include <string.h>
 #include <stdio.h>
 #include <linux/limits.h>
@@ -74,7 +75,7 @@ int main(int argc, char** argv) {
     char path_buffer[PATH_MAX];
 
     while (1) {
-        char* username = getlogin();
+        char* username = getpwuid(getuid())->pw_name;
         getcwd(path_buffer, PATH_MAX);
         printf("%s:%s>", username, path_buffer);
 
