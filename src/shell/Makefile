@@ -1,14 +1,22 @@
-CFLAGS = -Wall -g
 
-OBJS = mysh.o
+FILES = mysh.c Command.c Lexer.c Parser.c
+CC = gcc
+CFLAGS = -Wall -g
 
 all: mysh
 
-mysh: $(OBJS)
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+mysh: $(FILES)
+	$(CC) $(CFLAGS) $^ -o mysh
 
-clean: 
-	rm -f *.o *~ mysh
+Lexer.c:	Lexer.l 
+		lex Lexer.l
+
+Parser.c:	Parser.y Lexer.c
+		yacc -d Parser.y
+
+clean:
+		rm -f *.o *~ Lexer.c Lexer.h Parser.c Parser.h mysh
 
 .PHONY: all clean
+
 
