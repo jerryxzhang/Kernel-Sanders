@@ -21,6 +21,7 @@ typedef void* yyscan_t;
 
 
 int yyparse(Command **command, yyscan_t scanner);
+void runCommand(char *cmd_buffer);
 
 char **translateArgs(argList* args) {
     int len = 0;
@@ -41,7 +42,17 @@ char **translateArgs(argList* args) {
 
 
 /**
+ * @function    print_sh_history
  * 
+ * @abstract    Handles history command.
+ * @discussion  If no arguments given, entire history is printed.  If an
+ *              argument is given and it is >=0, then the last [argument] 
+ *              commands are printed.  Any other argument will result in an
+ *              error message.
+ * 
+ * @param       command     The command being parsed.
+ * @result      Nothing is returned, but the history/error message is printed
+ *              to the terminal.
  */
 void print_sh_history(Command* command) {
     // Get a NULL terminated array of commands where index 0 is the first
@@ -108,6 +119,76 @@ void print_sh_history(Command* command) {
         cmd_history++;
         history_start++;
     }
+    
+    return;
+}
+
+/**
+ * @function    rerun_cmd_n
+ * 
+ * @abstract    Runs the n-th command in history.
+ * @discussion  Given a command of the form !n [args], it runs the n-th
+ *              command in history.  If n is positive, it runs as normal.
+ *              If it is negative, it counts its offset from the newest
+ *              command in history.  If the absolute value of n is 0 or greater
+ *              than the total number of commands, nothing happens.  If n is
+ *              non-integer, nothing happens.  If nothing happens, a message is
+ *              printed to explain why.  Any arguments included are appended to
+ *              the n-th command.
+ * 
+ * @param       command     The command that starts with a '!' character and
+ *              contains which line to rerun.
+ * @result      Runs the n-th command.
+ */
+void rerun_cmd_n(Command* command) {
+    // Get the history so we can rerun a line.
+    HIST_ENTRY **cmd_history = history_list();
+    
+    // Find the number of commands.
+    int num_commands = 0;
+    HIST_ENTRY **temp = cmd_history;
+    while (*temp != NULL) {
+        num_commands++;
+        temp++;
+    }
+    
+    // Figure out which line we are supposed to run from.  This is the arg
+    // after the '!', or the argument starting at the first index.
+    char* argument = command->args->arg + 1;
+    int iarg = atoi(argument);
+    
+    // Check that the argument is in range.
+    if ((iarg == 0) || (iarg > num_commands) || (-1 * iarg > num_commands)) {
+        printf("%s: event not found.\n", command->args->arg);
+        return;
+    }
+    
+    // If a negative number given, we rerun counting from the end.  If positive
+    // we rerun counting from the beginning.  In any case, if the absolute
+    // value is more than the number of commands we have or is 0, nothing can
+    // be done.
+    int run_offset = iarg - 1;
+    if (iarg < 0) {
+        // The offset should be subtracted from the end (remember iarg < 0).
+        run_offset = num_commands + iarg - 1;
+    }
+    
+    // Create a command string from this and any arguments given to !n.
+    char next_cmd[MAX_COMMAND_SIZE];
+    strcpy(next_cmd, (*(cmd_history + run_offset))->line);
+    
+    // Put the rest of the arguments from !n onto the command string.
+    argList *iter = command->args->nextArg;
+    while (iter != NULL) {
+        strcat(next_cmd, " ");
+        strcat(next_cmd, iter->arg);
+        iter = iter->nextArg;
+    }
+    
+    // Run this new command.
+    runCommand(next_cmd);
+    
+    return;
 }
 
 /**
@@ -136,7 +217,13 @@ void executeCommand(Command* command, FILE* pipe) {
         return;
     }
     else if (strcmp(command->args->arg, "history") == 0) {
+        // Print history or error as to why that cannot be done.
         print_sh_history(command);
+        return;
+    }
+    else if (command->args->arg[0] == '!') {
+        // If !n is argued, rerun the n-th line in history.
+        rerun_cmd_n(command);
         return;
     }
 
@@ -164,6 +251,54 @@ void executeCommand(Command* command, FILE* pipe) {
     } 
 }
 
+
+/**
+ * @function    runCommand
+ * 
+ * @abstract    Parses and executes a command given a NULL terminated string.
+ * @discussion  Parses the command and adds it to the history if it is
+ *              nontrivial.
+ * 
+ * @param       cmd_buffer      Pointer to NULL terminated string containing
+ *                              the user input.
+ * @result      Returns nothing, but runs a command, most likely printing to
+ *              the terminal.
+ */
+void runCommand(char* cmd_buffer) {
+    Command *command;
+    yyscan_t scanner;
+    YY_BUFFER_STATE state;
+        
+    // Check if there is anything in the line.  It is useless to store
+    // a history of empty lines.  If it is not empty, then add it to our
+    // history.  Also don't want to record line rerun calls.
+    if ((cmd_buffer[0] != 0) && (cmd_buffer[0] != '!')) {
+        add_history(cmd_buffer);
+    }
+
+    state = yy_scan_string(cmd_buffer);
+
+    if (yyparse(&command, scanner)) {
+        printf("PARSING ERROR!\n");
+        deleteCommand(command);
+        return;
+    }
+
+    printCommand(command);
+    executeCommand(command, NULL);
+    deleteCommand(command);
+
+    // Wait on all child processes
+    while (wait(NULL) > 0) {}
+
+    yy_delete_buffer(state);
+
+    yylex_destroy();
+    
+    return;
+}
+
+
 int main(int argc, char** argv) {
     char *command_buffer;
     char path_buffer[PATH_MAX];
@@ -185,37 +320,36 @@ int main(int argc, char** argv) {
         // later.
         command_buffer = readline(prompt_buffer);
         
-        // Check if there is anything in the line.  It is useless to store
-        // a history of empty lines.  If it is not empty, then add it to our
-        // history.
-        if (command_buffer[0] != 0)
-            add_history(command_buffer);
-        
-        Command *command;
-        yyscan_t scanner;
-        YY_BUFFER_STATE state;
- 
-        state = yy_scan_string(command_buffer);
- 
-        if (yyparse(&command, scanner)) {
-            printf("PARSING ERROR!\n");
-            deleteCommand(command);
-            continue;
+        // To allow multiline commands, keep reading commands until we get a
+        // nonempty command whose last character is not a backslash.
+        int end_cmd = 0;
+        while (!end_cmd) {
+            // Figure out the last character
+            char *curr_char = command_buffer;
+            char last = *command_buffer;
+            while (*curr_char != '\0') {
+                last = *curr_char;
+                curr_char++;
+            }
+            
+            // If the last character is a backslash, continue listening for
+            // command.  Otherwise, break so we can parse.
+            if (last == '\\') {
+                *(curr_char - 1) = '\0';
+                char *next = readline("> ");
+                strcat(command_buffer, next);
+                free(next);
+            }
+            else {
+                end_cmd = 1;
+            }
         }
-
-        printCommand(command);
-        executeCommand(command, NULL);
-        deleteCommand(command);
+            
+        // Run the parsing and execution of this command string.
+        runCommand(command_buffer);
         
         // Must delete the command buffer that readline allocated memory for.
         free(command_buffer);
-
-        // Wait on all child processes
-        while (wait(NULL) > 0) {}
-
-        yy_delete_buffer(state);
- 
-        yylex_destroy();
     }
 
     return 0;
