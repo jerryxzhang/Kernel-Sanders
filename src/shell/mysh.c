@@ -49,6 +49,19 @@ void executeCommand(Command* command, FILE* pipe) {
     }
     else if (strcmp(command->args->arg, "cd") == 0 || strcmp(command->args->arg, "chdir") == 0) {
         // Change directories
+        char* path;
+        if (command->args->nextArg == NULL) {
+            char buff[PATH_MAX];
+            char* username = getpwuid(getuid())->pw_name;
+            sprintf(buff, "/home/%s", username);
+            path = buff;
+        }
+        else {
+            path = command->args->nextArg->arg;
+        }
+        if (chdir(path) == -1) {
+            printf("%s\n", strerror(errno));
+        }
         return;
     }
 
