@@ -12,7 +12,12 @@ typedef void* yyscan_t;
 #include "Parser.h"
 #include "Lexer.h"
 
+#include <readline/readline.h>
+#include <readline/history.h>
+
 #define MAX_COMMAND_SIZE 1000
+#define USERNAME_MAX 12
+#define PROMPT_MAX (USERNAME_MAX + PATH_MAX + 2) // +2 for ":" and ">"
 
 
 int yyparse(Command **command, yyscan_t scanner);
@@ -72,15 +77,31 @@ void executeCommand(Command* command, FILE* pipe) {
 }
 
 int main(int argc, char** argv) {
-    char command_buffer[MAX_COMMAND_SIZE];
+    char *command_buffer;
     char path_buffer[PATH_MAX];
+    char prompt_buffer[PROMPT_MAX];
 
     while (1) {
         char* username = getpwuid(getuid())->pw_name;
         getcwd(path_buffer, PATH_MAX);
-        printf("%s:%s>", username, path_buffer);
-
-        fgets(command_buffer, MAX_COMMAND_SIZE, stdin);
+        
+        // Compile the prompt that the user sees for entering commands.  This
+        // will look like [username]:[current_path]>
+        strcpy(prompt_buffer, username);
+        strcat(prompt_buffer, ":");
+        strcat(prompt_buffer, path_buffer);
+        strcat(prompt_buffer, "> ");
+        
+        // Read from the command line and store it in command_buffer.  This
+        // calls calloc on the return value, so we must free command_buffer
+        // later.
+        command_buffer = readline(prompt_buffer);
+        
+        // Check if there is anything in the line.  It is useless to store
+        // a history of empty lines.  If it is not empty, then add it to our
+        // history.
+        if (command_buffer[0] != 0)
+            add_history(command_buffer);
         
         Command *command;
         yyscan_t scanner;
@@ -97,6 +118,9 @@ int main(int argc, char** argv) {
         printCommand(command);
         executeCommand(command, NULL);
         deleteCommand(command);
+        
+        // Must delete the command buffer that readline allocated memory for.
+        free(command_buffer);
 
         // Wait on all child processes
         while (wait(NULL) > 0) {}
