@@ -44,6 +44,9 @@ void executeCommand(Command* command, FILE* pipe) {
     }
     else if (strcmp(command->args->arg, "cd") == 0 || strcmp(command->args->arg, "chdir") == 0) {
         // Change directories
+        if (chdir(command->args->nextArg->arg) == -1) {
+            printf("%s\n", strerror(errno));
+        }
         return;
     }
 
