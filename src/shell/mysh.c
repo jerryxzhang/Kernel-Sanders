@@ -39,6 +39,77 @@ char **translateArgs(argList* args) {
     return ret;
 }
 
+
+/**
+ * 
+ */
+void print_sh_history(Command* command) {
+    // Get a NULL terminated array of commands where index 0 is the first
+    // chronological entry.
+    HIST_ENTRY **cmd_history = history_list();
+    
+    // Start printing history from this one-indexed place.
+    int history_start = 1;
+    
+    // First, check if there are any arguments.  Only positive numbers are
+    // acceptable.
+    if (command->args->nextArg != NULL) {
+        // There is an argument.  Check if we can convert it to an integer.
+        // atoi returning zero implies either failure or "0" argument.
+        
+        // Convert the argument to an integer (or get an error code).
+        int nextArgVal = atoi(command->args->nextArg->arg);
+        if ((nextArgVal == 0) && strcmp(command->args->nextArg->arg, "0")) {
+            // Failure value and atoi was not given "0"
+            printf("history: %s: Requires numeric argument.\n", \
+                    command->args->nextArg->arg);
+                    
+            // Not printing any history.
+            return;
+        }
+        else if (nextArgVal < 0) {
+            // We need a positive value so we know how many lines to print.
+            printf("history: %s: invalid option\n", \
+                    command->args->nextArg->arg);
+            printf("history: usage: history [n]\n");
+            
+            // Not printing any history.
+            return;
+        }
+        else {
+            // atoi was successful, even if it returned 0 in which case the 
+            // argument was the '0' character.  Print the last n commands by
+            // finding a pointer to the end of the list, decrementing it n
+            // times, then printing until NULL
+            
+            // Find offset to end of list.
+            HIST_ENTRY **last_cmd = cmd_history;
+            while (*last_cmd != NULL) {
+                history_start++;
+                last_cmd++;
+            }
+            
+            // Decrement n times.  If there are fewer than n entries, start at
+            // the first entry and show entire history.  nextArgVal is n.
+            // Otherwise, history_start should be 1 for the start.
+            if (nextArgVal < history_start)
+                history_start = history_start - nextArgVal;
+            else
+                history_start = 1;
+        }
+    }
+    
+    // Iterate over all of the history starting at the value we decided to
+    // start at, either by default or from an argument.  The start value is
+    // one-indexed, so we must decrement it before altering the pointer start.
+    cmd_history += history_start - 1;
+    while (*cmd_history != NULL) {
+        printf("%d\t%s\n", history_start, (*cmd_history)->line);
+        cmd_history++;
+        history_start++;
+    }
+}
+
 /**
  *
  */
@@ -62,6 +133,10 @@ void executeCommand(Command* command, FILE* pipe) {
         if (chdir(path) == -1) {
             printf("%s\n", strerror(errno));
         }
+        return;
+    }
+    else if (strcmp(command->args->arg, "history") == 0) {
+        print_sh_history(command);
         return;
     }
 
