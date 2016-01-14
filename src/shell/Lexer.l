@@ -20,9 +20,14 @@ typedef void* yyscan_t;
 PIPE      "|"
 IN        "<"
 OUT       ">"
- 
+
+/* One or more of any character not reserved or whitespace. */
 NAME      [^|<>\" \r\n\t]+
+
+/* Any number of non quote characters, between two quotes. */
 QNAME     \"[^\"]*\"
+
+/* Any whitespace. */
 WS        [ \r\n\t]*
  
 %%
@@ -39,7 +44,8 @@ WS        [ \r\n\t]*
     strncpy(new_name, yytext + 1, strlen(yytext) - 2);
     yylval.name = new_name;
     return TOKEN_NAME; }
-{NAME}        { 
+{NAME}        {
+    // yytext can change, so its contents must be copied
     char *new_name = (char*) calloc(strlen(yytext) + 1, sizeof(char));
     strcpy(new_name, yytext);
     yylval.name = new_name;
