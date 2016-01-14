@@ -197,7 +197,7 @@ void rerun_cmd_n(Command* command) {
 /**
  *
  */
-void executeCommand(Command* command, FILE* pipe) {
+void executeCommand(Command* command, int inPipe) {
     if (strcmp(command->args->arg, "exit") == 0) {
         printf("Exiting\n");
         exit(0);
@@ -231,6 +231,12 @@ void executeCommand(Command* command, FILE* pipe) {
     }
 
     // Create a pipe if there is a next command
+    int pipefd[2] = {-1, -1};
+    if (command->pipe_destination != NULL) {
+        if (pipe(pipefd) == -1){
+            printf("%s\n", strerror(errno));
+        }
+    }
     
     pid_t pid = fork();
     if (pid < 0) {
@@ -245,21 +251,30 @@ void executeCommand(Command* command, FILE* pipe) {
         // (output and input take precedence over pipe)
 
         int in_fd, out_fd;
-        if (command->input != NULL) {
+
+        if (inPipe > -1) {
+            dup2(inPipe, STDIN_FILENO);
+            close(inPipe);
+        }
+        else if (command->input != NULL) {
             in_fd = open(command->input, O_RDONLY);
             if (in_fd == -1) {
                 printf("Failed to open input file \n");
-                exit(1);
+                return;
             }
             dup2(in_fd, STDIN_FILENO); /* Replace stdin */
             close(in_fd);  
         }
-        if (command->output != NULL) {
+        if (pipefd[1] > -1) {
+            dup2(pipefd[1], STDOUT_FILENO);
+            close(pipefd[1]);
+        }
+        else if (command->output != NULL) {
             out_fd = open(command->output, O_CREAT | O_TRUNC | O_WRONLY,
                 S_IRUSR | S_IRGRP | S_IROTH);
             if (out_fd == -1) {
                 printf("Failed to open output file \n");
-                exit(1);
+                return;
             }
             dup2(out_fd, STDOUT_FILENO); /* Replace stdout */
             close(out_fd);
@@ -272,6 +287,16 @@ void executeCommand(Command* command, FILE* pipe) {
     }
     else {
         // Recurse on the next command if there is one, pass along the pipe
+        if (inPipe > -1) {
+            close(inPipe);
+        }
+        if (pipefd[1] > -1) {
+            close(pipefd[1]);
+        }
+        if (command->pipe_destination != NULL) {
+            executeCommand(command->pipe_destination, pipefd[0]);
+        }
+
     } 
 }
 
@@ -309,7 +334,7 @@ void runCommand(char* cmd_buffer) {
     }
 
     printCommand(command);
-    executeCommand(command, NULL);
+    executeCommand(command, -1);
     deleteCommand(command);
 
     // Wait on all child processes
