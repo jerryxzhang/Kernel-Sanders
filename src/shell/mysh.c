@@ -4,6 +4,7 @@ typedef void* yyscan_t;
 #include <pwd.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <linux/limits.h>
 #include <ctype.h>
 #include <sys/wait.h>
@@ -126,11 +127,31 @@ void print_sh_history(Command* command) {
     // start at, either by default or from an argument.  The start value is
     // one-indexed, so we must decrement it before altering the pointer start.
     cmd_history += history_start - 1;
+    char out_line[MAX_COMMAND_SIZE];
+    FILE *out_file = NULL;
+    if (command->output)
+        out_file = fopen(command->output, "w");
     while (*cmd_history != NULL) {
-        printf("%d\t%s\n", history_start, (*cmd_history)->line);
+        snprintf(out_line, MAX_COMMAND_SIZE, "\t%d", history_start);
+        strcat(out_line, "\t");
+        strcat(out_line, (*cmd_history)->line);
+        strcat(out_line, "\n");
+        
+        // Print the string to the appropriate location
+        if (out_file == NULL)
+            printf(out_line);
+        else {
+            fprintf(out_file, out_line);
+        }
+        
+        // Increment everything
         cmd_history++;
         history_start++;
     }
+    
+    // If we opened a file, close it.
+    if (out_file)
+        fclose(out_file);
     
     return;
 }
