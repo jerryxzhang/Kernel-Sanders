@@ -5,3 +5,7 @@ tags
 doc
 *.o
 mysh
+Lexer.c
+Lexer.h
+Parser.c
+Parser.h

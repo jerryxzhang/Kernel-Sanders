@@ -26,6 +26,15 @@ typedef void* yyscan_t;
 int yyparse(Command **command, yyscan_t scanner);
 void runCommand(char *cmd_buffer);
 
+/**
+ * @function    translateArgs
+ * 
+ * @abstract    Translates linked list of args into array.
+ * @discussion  Caller must free the memory of the result.
+ * 
+ * @param       args - a linked list of strings
+ * @result      A null terminated array of null terminated strings.
+ */
 char **translateArgs(argList* args) {
     int len = 0;
     argList* argscopy = args;
@@ -195,14 +204,24 @@ void rerun_cmd_n(Command* command) {
 }
 
 /**
+ * @function    executeCommand
+ * 
+ * @abstract    Execute the command, using the given pipe as stdin.
+ * @discussion  Loads input / output files, create pipes, and forks off children
+ *              to execute the task.
+ * 
+ * @param       command - a struct representing the command
+ *              pipe - one end of a pipe to be used as stdin, or NULL if there is none
  *
+ * @result      Returns nothing.
  */
 void executeCommand(Command* command, FILE* pipe) {
     if (strcmp(command->args->arg, "exit") == 0) {
         printf("Exiting\n");
         exit(0);
     }
-    else if (strcmp(command->args->arg, "cd") == 0 || strcmp(command->args->arg, "chdir") == 0) {
+    else if (strcmp(command->args->arg, "cd") == 0 
+            || strcmp(command->args->arg, "chdir") == 0) {
         // Change directories
         char* path;
         if (command->args->nextArg == NULL) {
@@ -289,7 +308,7 @@ void executeCommand(Command* command, FILE* pipe) {
  *              the terminal.
  */
 void runCommand(char* cmd_buffer) {
-    Command *command;
+    Command *command = NULL;
     yyscan_t scanner;
     YY_BUFFER_STATE state;
         
@@ -303,12 +322,11 @@ void runCommand(char* cmd_buffer) {
     state = yy_scan_string(cmd_buffer);
 
     if (yyparse(&command, scanner)) {
-        printf("PARSING ERROR!\n");
+        printf("Error in parsing command.\n");
         deleteCommand(command);
         return;
     }
 
-    printCommand(command);
     executeCommand(command, NULL);
     deleteCommand(command);
 
@@ -375,7 +393,5 @@ int main(int argc, char** argv) {
         // Must delete the command buffer that readline allocated memory for.
         free(command_buffer);
     }
-
     return 0;
-
 }

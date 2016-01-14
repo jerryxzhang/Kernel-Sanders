@@ -48,8 +48,7 @@ int yywrap()
 %%
 
 input
-    : command { *command = $1; }
-    | commands { *command = $1; }
+    : commands { *command = $1; }
     ;
 
 names

@@ -400,16 +400,16 @@ union yyalloc
 /* YYFINAL -- State number of the termination state.  */
 #define YYFINAL  7
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   17
+#define YYLAST   16
 
 /* YYNTOKENS -- Number of terminals.  */
 #define YYNTOKENS  8
 /* YYNNTS -- Number of nonterminals.  */
 #define YYNNTS  5
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  12
+#define YYNRULES  11
 /* YYNSTATES -- Number of states.  */
-#define YYNSTATES  19
+#define YYNSTATES  18
 
 /* YYTRANSLATE[YYX] -- Symbol number corresponding to YYX as returned
    by yylex, with out-of-bounds checking.  */
@@ -456,8 +456,8 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    51,    51,    52,    56,    59,    65,    66,    67,    68,
-      69,    73,    74
+       0,    51,    51,    55,    58,    64,    65,    66,    67,    68,
+      72,    73
 };
 #endif
 
@@ -496,7 +496,7 @@ static const yytype_uint16 yytoknum[] =
 static const yytype_int8 yypact[] =
 {
       -4,    -4,     2,    -5,     0,    -6,    -6,    -6,    -2,    -1,
-      -4,     1,     3,     0,    -6,     4,     5,    -6,    -6
+      -4,     1,     3,    -6,     4,     5,    -6,    -6
 };
 
   /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -504,14 +504,14 @@ static const yytype_int8 yypact[] =
      means the default is an error.  */
 static const yytype_uint8 yydefact[] =
 {
-       0,     4,     0,     6,     2,     3,     5,     1,     0,     0,
-       0,     7,     8,    11,    12,     0,     0,     9,    10
+       0,     3,     0,     5,    10,     2,     4,     1,     0,     0,
+       0,     6,     7,    11,     0,     0,     8,     9
 };
 
   /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-      -6,    -6,     8,     6,     7
+      -6,    -6,     8,    -6,     6
 };
 
   /* YYDEFGOTO[NTERM-NUM].  */
@@ -525,14 +525,14 @@ static const yytype_int8 yydefgoto[] =
      number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_uint8 yytable[] =
 {
-       8,     9,     7,     1,    10,    11,    12,    15,    16,     6,
-       0,    17,    18,     0,     0,     0,    13,    14
+       8,     9,     7,     1,    10,    11,    12,    14,    15,     6,
+       0,    16,    17,     0,     0,     0,    13
 };
 
 static const yytype_int8 yycheck[] =
 {
        5,     6,     0,     7,     4,     7,     7,     6,     5,     1,
-      -1,     7,     7,    -1,    -1,    -1,    10,    10
+      -1,     7,     7,    -1,    -1,    -1,    10
 };
 
   /* YYSTOS[STATE-NUM] -- The (internal number of the) accessing
@@ -540,21 +540,21 @@ static const yytype_int8 yycheck[] =
 static const yytype_uint8 yystos[] =
 {
        0,     7,     9,    10,    11,    12,    10,     0,     5,     6,
-       4,     7,     7,    11,    12,     6,     5,     7,     7
+       4,     7,     7,    12,     6,     5,     7,     7
 };
 
   /* YYR1[YYN] -- Symbol number of symbol that rule YYN derives.  */
 static const yytype_uint8 yyr1[] =
 {
-       0,     8,     9,     9,    10,    10,    11,    11,    11,    11,
-      11,    12,    12
+       0,     8,     9,    10,    10,    11,    11,    11,    11,    11,
+      12,    12
 };
 
   /* YYR2[YYN] -- Number of symbols on the right hand side of rule YYN.  */
 static const yytype_uint8 yyr2[] =
 {
-       0,     2,     1,     1,     1,     2,     1,     3,     3,     5,
-       5,     1,     3
+       0,     2,     1,     1,     2,     1,     3,     3,     5,     5,
+       1,     3
 };
 
 
@@ -1241,71 +1241,65 @@ yyreduce:
     break;
 
   case 3:
-#line 52 "Parser.y" /* yacc.c:1646  */
-    { *command = (yyvsp[0].com); }
-#line 1247 "Parser.c" /* yacc.c:1646  */
-    break;
-
-  case 4:
-#line 56 "Parser.y" /* yacc.c:1646  */
+#line 55 "Parser.y" /* yacc.c:1646  */
     {
         (yyval.args) = createArgList((yyvsp[0].name), NULL);
     }
-#line 1255 "Parser.c" /* yacc.c:1646  */
+#line 1249 "Parser.c" /* yacc.c:1646  */
     break;
 
-  case 5:
-#line 59 "Parser.y" /* yacc.c:1646  */
+  case 4:
+#line 58 "Parser.y" /* yacc.c:1646  */
     {
         (yyval.args) = createArgList((yyvsp[-1].name), (yyvsp[0].args));
     }
+#line 1257 "Parser.c" /* yacc.c:1646  */
+    break;
+
+  case 5:
+#line 64 "Parser.y" /* yacc.c:1646  */
+    { (yyval.com) = createCommand((yyvsp[0].args)->arg, (yyvsp[0].args), NULL, NULL, NULL); }
 #line 1263 "Parser.c" /* yacc.c:1646  */
     break;
 
   case 6:
 #line 65 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = createCommand((yyvsp[0].args)->arg, (yyvsp[0].args), NULL, NULL, NULL); }
+    { (yyval.com) = createCommand((yyvsp[-2].args)->arg, (yyvsp[-2].args), (yyvsp[0].name), NULL, NULL); }
 #line 1269 "Parser.c" /* yacc.c:1646  */
     break;
 
   case 7:
 #line 66 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = createCommand((yyvsp[-2].args)->arg, (yyvsp[-2].args), (yyvsp[0].name), NULL, NULL); }
+    { (yyval.com) = createCommand((yyvsp[-2].args)->arg, (yyvsp[-2].args), NULL, (yyvsp[0].name), NULL); }
 #line 1275 "Parser.c" /* yacc.c:1646  */
     break;
 
   case 8:
 #line 67 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = createCommand((yyvsp[-2].args)->arg, (yyvsp[-2].args), NULL, (yyvsp[0].name), NULL); }
+    { (yyval.com) = createCommand((yyvsp[-4].args)->arg, (yyvsp[-4].args), (yyvsp[-2].name), (yyvsp[0].name), NULL); }
 #line 1281 "Parser.c" /* yacc.c:1646  */
     break;
 
   case 9:
 #line 68 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = createCommand((yyvsp[-4].args)->arg, (yyvsp[-4].args), (yyvsp[-2].name), (yyvsp[0].name), NULL); }
+    { (yyval.com) = createCommand((yyvsp[-4].args)->arg, (yyvsp[-4].args), (yyvsp[0].name), (yyvsp[-2].name), NULL); }
 #line 1287 "Parser.c" /* yacc.c:1646  */
     break;
 
   case 10:
-#line 69 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = createCommand((yyvsp[-4].args)->arg, (yyvsp[-4].args), (yyvsp[0].name), (yyvsp[-2].name), NULL); }
+#line 72 "Parser.y" /* yacc.c:1646  */
+    { (yyval.com) = (yyvsp[0].com); }
 #line 1293 "Parser.c" /* yacc.c:1646  */
     break;
 
   case 11:
 #line 73 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = (yyvsp[0].com); }
+    { (yyval.com) = pipeCommand((yyvsp[-2].com), (yyvsp[0].com)); }
 #line 1299 "Parser.c" /* yacc.c:1646  */
     break;
 
-  case 12:
-#line 74 "Parser.y" /* yacc.c:1646  */
-    { (yyval.com) = pipeCommand((yyvsp[-2].com), (yyvsp[0].com)); }
-#line 1305 "Parser.c" /* yacc.c:1646  */
-    break;
 
-
-#line 1309 "Parser.c" /* yacc.c:1646  */
+#line 1303 "Parser.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -1533,5 +1527,5 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 77 "Parser.y" /* yacc.c:1906  */
+#line 76 "Parser.y" /* yacc.c:1906  */
 

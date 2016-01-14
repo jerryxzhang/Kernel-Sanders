@@ -3,7 +3,7 @@
  */
 
 /**
- * @brief The command structure
+ * @brief The command struct.
  */
 typedef struct tagCommand
 {
@@ -36,10 +36,23 @@ typedef struct argListStruct
 */
 Command *createCommand(char *name, argList *args, char *input, char *output, Command *pipe);
 
+/**
+ * Sets the pipe destination of c1 to c2.
+ */
 Command *pipeCommand(Command *c1, Command *c2);
 
+/**
+ * Frees all memory associated with the given command and all commands it links to.
+ */
 void deleteCommand(Command *b);
 
+
+/**
+ * Adds a new element to the beginning of an argList.
+ */
 argList *createArgList(char* arg, argList* nextArgs);
 
+/**
+ * Prints the contents of the Command struct in a pretty indented way.
+ */
 void printCommand(Command *command);
