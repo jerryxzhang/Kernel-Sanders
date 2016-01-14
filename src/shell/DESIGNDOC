@@ -9,7 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Jack Wang <j.wang@caltech.edu>
-FirstName LastName <email@domain.example>
+Jerry Zhang <jerry.zhang@caltech.edu>
 FirstName LastName <email@domain.example>
 
 >> Specify how many late tokens you are using on this assignment: 0 
@@ -18,17 +18,19 @@ FirstName LastName <email@domain.example>
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
-   commit ...
+   Repository URL: /cs/courses/cs124/teams/KernelSanders.git 
+   commit 3046b63
 
 ---- PRELIMINARIES ----
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please include them here.
+multiline commands, readline and history, and !n
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course instructors.
+c and linux documentation, lots of googling lex/yacc stuff
 
 			   COMMAND SHELL
 			   =============
@@ -44,7 +46,7 @@ which parts.
 
 Jack Wang: 5
 
-Jerry Zhang:
+Jerry Zhang: 9
 
 Tim Menninger:
 
@@ -54,7 +56,7 @@ Tim Menninger:
 
 Jack Wang: Implementing CD, redirecting, and piping.
 
-Jerry Zhang:
+Jerry Zhang: Implementing the parser, project skeleton, and forking children
 
 Tim Menninger:
 
@@ -65,11 +67,15 @@ Tim Menninger:
 >> commands that contain arguments and pipes, using the example
 >> command "a arg1 arg2 | b arg1 | c arg1 arg2 arg3".  How does your
 >> shell internally represent such a command?
+The command is parsed with a bison parser that recognizes a single command as being a series of words followed by an optional < or > followed by a word. Then, a series of commands can exist with the pipe character between them. Each command is represented as a struct containing the program name, any args, any input / output files, and a pointer to the command to pipe to. The input/output as well as next command may be NULL. The command is then executed by retrieving the data in the
+struct, loading any files or pipes necessary, forking and execing, and then calling the function recursively on the next command while passing the pipe along.
 
 >> A2: Now, given the command:
 >> "a arg1 arg2 < inp.txt | b arg1 | c arg1 arg2 arg3 > out.txt"
 >> Briefly explain specifically how the redirections are parsed and
 >> represented, and by what processes.
+This uses the same process described above. 
+
 
 ---- ALGORITHMS ----
 
@@ -119,9 +125,11 @@ running c out.txt is opened and duped into STDOUT before c is run.
 
 >> A7: Why must the chdir and exit commands be implemented as built-in
 >> functions, rather than external programs?
+They modify the state of the terminal, therefore, no external program could provide that functionality.
 
 >> A8: Why did you ultimately choose this design?  In what ways is it
 >> superior to other designs you considered as you developed your solution?
+For the parser, we considered using the string functions directly before deciding on a lex/yacc parser. There were some issues with setting up lex/yacc but ultimately they make the parsing code easy to understand and modify, which is an advantage.
 
 			  SURVEY QUESTIONS
 			  ================
