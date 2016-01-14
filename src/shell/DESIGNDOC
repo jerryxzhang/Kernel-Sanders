@@ -42,7 +42,7 @@ which parts.
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
 
-Jack Wang:
+Jack Wang: 5
 
 Jerry Zhang:
 
@@ -52,7 +52,7 @@ Tim Menninger: 5
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
 
-Jack Wang:
+Jack Wang: Implementing CD, redirecting, and piping.
 
 Jerry Zhang:
 
@@ -78,6 +78,11 @@ commands.
 >> redirection in a simple command like "a < inp.txt > out.txt", by
 >> describing what process takes care of the redirection and when.
 
+The command shell parses the command and forks off a child process. In the
+child process, inp.txt is opened and duped in to STDIN and out.txt is
+opened and duped into STDOUT. Process a is then ran in the child process
+using execvp. The command shell moves on once the child process is reaped.
+
 >> A4: Illustrate how you solved the problem of setting up the pipes
 >> between multiple operations in a single command, by describing
 >> what each process is responsible for.  For example, given the
@@ -87,12 +92,29 @@ commands.
 >> Keep your description of each process' responsibilities limited to
 >> ~25 words or less.
 
+The command shell first creates a pipe (pipe 1), then forks off a child process
+for a. In the process for a, pipe 1's write end is duped in to STDOUT. The
+process then runs a with execvp. Meanwhile the command shell creates another
+pipe (pipe 2) and forks off another process for b. In the process for b,
+pipe 1's read end is duped into STDIN and pipe 2's write end is duped into
+STDOUT. Then the process runs b with execvp. The command shell forks a third
+time for c. In the process for c, pipe 2's read end is duped into STDIN and c
+is run with execvp.
+
 >> A5: Similarly, describe the details of how terminated processes are
 >> reaped in the example command "a | b | c".
+
+The command shell process spawns all the child process for a, b, and c. After
+spawning all 3 process as described in A4, the command shell process calls
+wait() until all child processes are finished.  Wait reaps the processes.
 
 >> A6: Similarly, describe which processes are responsible for setting
 >> up the redirections in the example command
 >> "a < inp.txt | b | c > out.txt".
+
+The procedure is the same as in A4 execept that in the process running a
+intp.txt is opened and duped into STDIN before a is run and in the process
+running c out.txt is opened and duped into STDOUT before c is run.
 
 ---- RATIONALE ----
 
