@@ -7,6 +7,9 @@ typedef void* yyscan_t;
 #include <linux/limits.h>
 #include <ctype.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include "Command.h"
 #include "Parser.h"
@@ -240,6 +243,27 @@ void executeCommand(Command* command, FILE* pipe) {
         // Load the input and output
         // Use the pipe if it exists 
         // (output and input take precedence over pipe)
+
+        int in_fd, out_fd;
+        if (command->input != NULL) {
+            in_fd = open(command->input, O_RDONLY);
+            if (in_fd == -1) {
+                printf("Failed to open input file \n");
+                exit(1);
+            }
+            dup2(in_fd, STDIN_FILENO); /* Replace stdin */
+            close(in_fd);  
+        }
+        if (command->output != NULL) {
+            out_fd = open(command->output, O_CREAT | O_TRUNC | O_WRONLY,
+                S_IRUSR | S_IRGRP | S_IROTH);
+            if (out_fd == -1) {
+                printf("Failed to open output file \n");
+                exit(1);
+            }
+            dup2(out_fd, STDOUT_FILENO); /* Replace stdout */
+            close(out_fd);
+        }
 
         if (execvp(args[0], args) == -1) {
             printf("Could not execute %s!\n", args[0]);
