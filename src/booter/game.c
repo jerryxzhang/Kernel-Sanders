@@ -1,4 +1,6 @@
 #include "interrupts.h"
+#include "keyboard.h"
+#include "timer.h"
 
 /* This is the entry-point for the game! */
 void c_start(void) {
@@ -8,6 +10,15 @@ void c_start(void) {
      *        enable_interrupts() to start interrupt handling, and go on to
      *        do whatever else you decide to do!
      */
+    
+    /* Initialize our interrupt vector. */
+    init_interrupts();
+    
+    /* Initialize peripherals. */
+    init_keyboard();
+    
+    /* Initialize timers. */
+    init_timer();
 
 	/* After setting up the game, we can enable interrupts again so the game
 	 * can run as expected. */

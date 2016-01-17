@@ -52,7 +52,9 @@
 /**
  * @brief Handles timer interrupts.
  */
-void interrupt_timer(void) {
+void timer_ISR(void) {
+	int a = 1;
+	a += 2;
 	return;
 }
 

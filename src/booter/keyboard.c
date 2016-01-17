@@ -43,7 +43,7 @@
 /**
  * @brief Handles keyboard interrupts.
  */
-void interrupt_keyboard(void) {
+void keyboard_ISR(void) {
 	return;
 }
 

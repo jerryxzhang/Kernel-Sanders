@@ -3,7 +3,7 @@
 
 
 void init_timer(void);
-void interrupt_timer(void);
+void timer_ISR(void);
 
 
 #endif /* TIMER_H */

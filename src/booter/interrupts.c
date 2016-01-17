@@ -177,39 +177,12 @@ void init_interrupts(void) {
     zeroed.selector = 0;
     zeroed.type_attr = 0;
     zeroed.zero = 0;
-    *interrupt_descriptor_table = (zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
-		zeroed, zeroed, zeroed);
+    
+    uint16_t counter = 0;
+    while (counter < NUM_INTERRUPTS) {
+		*(interrupt_descriptor_table + counter) = zeroed;
+		counter += 1;
+	}
 	
 	// Install the new Interrupt Descriptor Table.	
     lidt(&interrupt_descriptor_table, sizeof(IDT_Descriptor) * NUM_INTERRUPTS);
@@ -230,7 +203,7 @@ void init_interrupts(void) {
  * not a C function, although the handler might call a C function.
  */
 void install_interrupt_handler(int num, void *handler) {
-     
+    
     IDT_Descriptor idt_desc;
     /* Want the low 16 bits of handler address.  Must treat address as int
     	to do this. */
@@ -250,6 +223,7 @@ void install_interrupt_handler(int num, void *handler) {
      * 		-000 ---- DPL component, suggested it be set to zero
      * 		---- -1-- Size of gate: 1 => 32bit (0 would imply 16bit)
      * 		---- 0-11 As per IA32 manual
+     * 
      *    0x   8    7 Hex representation
      */
     idt_desc.type_attr = 0x87;

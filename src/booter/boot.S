@@ -180,7 +180,7 @@ STR_FAILED: .string "Failed to load program.\r\n"
 dap:
     .byte 0x10                  # Size of packet in bytes
     .byte 0x00                  # Unused
-    .word 0x0001                # Number of sectors to read
+    .word 0x0010                # Number of sectors to read
     .word 0x0000                # Offset to data destination
     .word 0x2000                # Segment to data destination
     .quad 0x0000000000000001    # Starting index of sectors to read

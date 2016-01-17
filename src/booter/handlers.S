@@ -7,7 +7,7 @@ timer_handler:
 	pusha				 # Save machine state.
 	cld					 # Calling C code; clear direction flag.
 	
-	call interrupt_timer # Call our C function for timer interrupts.
+	call timer_ISR       # Call our C function for timer interrupts.
 	
 	mov $0x20, %al 		 # Acknowledge the interrupt.
 	out %al, $0x20		 # Send interrupt ack to hardware.
@@ -22,7 +22,7 @@ keyboard_handler:
 	pusha				# Save machine state.
 	cld					# Calling C code; clear direction flag.
 	
-	call interrupt_keyboard # Call our C function for keyboard interrupts.
+	call keyboard_ISR  # Call our C function for keyboard interrupts.
 	
 	mov $0x20, %al		# Acknowledge the interrupt.
 	out %al, $0x20		# Send interrupt ack to hardware.
