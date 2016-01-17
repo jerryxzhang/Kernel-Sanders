@@ -44,15 +44,6 @@ boot_start:
     mov $STR_LOADING, %si
     call    print_str
 
-    #---------------------------------------------------------------------
-    # TODO:  Load the remainder of the program into memory using int 13h
-    #        "Extended Read Operation."  If it fails, jump to boot_fail.
-    #
-    #        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.
-    #           !! Implemented, but leaving comment for now in case
-    #                   we must go back. -Tim
-    #---------------------------------------------------------------------
-
     # Put the operation code into AH (extended read operation)
     mov $EXT_READ_OP_CODE, %ah
     
@@ -99,47 +90,6 @@ boot_start:
     # switch over to protected mode.
 
 start_protected:
-
-    #---------------------------------------------------------------------
-    # TODO:  Switch from real mode into protected mode.  The process is
-    #        straightforward:
-    #
-    #        1)  Disable interrupts, since any interrupt during this
-    #            process would demolish us.  (We don't turn interrupts
-    #            back on until we are safely in our C program, and have
-    #            set up an Interrupt Descriptor Table.)
-    #
-    #        2)  Set the Global Descriptor Table Register (GDTR) to our
-    #            simple Global Descriptor Table specified at the end of
-    #            the boot-loader.  You will need to write it like this,
-    #            since we are still in 16-bit real mode:
-    #
-    #            data32 addr32 lgdt gdtdesc
-    #
-    #            (We need a data32 prefix to ensure that all 32 bits of
-    #            the GDT descriptor are loaded; default is to load only
-    #            24 bits.  The CPU doesn't need an addr32 prefix but ELF
-    #            doesn't do 16-bit relocations.)
-    #
-    #        3)  Turn on protected mode by modifying Control Register cr0.
-    #            See IA32 Manual Volume 3A, Section 2.5 for details of
-    #            which bit(s) to set.  Don't turn on paging - we don't
-    #            need it!  Also, you should not modify any other bits in
-    #            cr0:  read it, OR in the appropriate bit(s), then write
-    #            it back.
-    #
-    #            You should use the constants in the boot.h header file
-    #            for this step, to make your code more readable.
-    #
-    #        See also IA32 Manual Volume 3A, Section 8.9.1 for the general
-    #        overview.  (We only do the parts that are relevant to our
-    #        needs in this project!)
-    #
-    #        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.  (FEEL
-    #        FREE TO INCORPORATE ANY OF THE ABOVE COMMENTS INTO YOUR CODE!)
-    #           !! Implemented, but leaving comment for now in case
-    #                   we must go back. -Tim
-    #---------------------------------------------------------------------
     
     # Want to disable interrupts until program is loaded (1).
     cli 
@@ -181,26 +131,6 @@ call_c_entry:
 
     cld         # C code expects this...
     movl $0, %ebp       # Null-terminate the program's backtrace
-
-    #---------------------------------------------------------------------
-    # TODO:  Call the entry-point of the C program!  The program is
-    #        compiled and linked into an ELF file, so the file's ELF
-    #        header will specify the entry-point into the program.  See
-    #        the e_entry field; it is a 32-bit value.
-    #
-    #        The ELF-header is the very first data-structure in the data
-    #        that was loaded by the boot-loader, so the e_entry field
-    #        will be at a fixed offset from the start of the file data.
-    #
-    #        You will need to use an indirect call, where the address to
-    #        call is in a register.  The format is:  call *%somereg
-    #
-    #        Don't forget that you are calling a C function, so follow
-    #        cdecl!
-    #
-    #        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.  (FEEL
-    #        FREE TO INCORPORATE ANY OF THE ABOVE COMMENTS INTO YOUR CODE!)
-    #---------------------------------------------------------------------
     
     # The ELF-header is the very first data-structure in the data
     # that was loaded by the boot-loader, so the e_entry field
