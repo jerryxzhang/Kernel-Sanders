@@ -168,15 +168,51 @@ void IRQ_clear_mask(unsigned char IRQline) {
 
 /* Initialize interrupts */
 void init_interrupts(void) {
-    /* TODO:  INITIALIZE AND LOAD THE INTERRUPT DESCRIPTOR TABLE.
-     *
-     *        The entire Interrupt Descriptor Table should be zeroed out.
-     *        (Unfortunately you have to do this yourself since you don't
-     *        have the C Standard Library to use...)
-     *
-     *        Once the entire IDT has been cleared, use the lidt() function
-     *        defined above to install our IDT.
-     */
+	
+    /* Clear the IDT. There are 256 interrupts.  Create an empty one and then
+     * put 256 of them at the IDT base address. */
+    IDT_Descriptor zeroed;
+    zeroed.offset_15_0 = 0;
+    zeroed.offset_31_16 = 0;
+    zeroed.selector = 0;
+    zeroed.type_attr = 0;
+    zeroed.zero = 0;
+    *interrupt_descriptor_table = (zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, zeroed, \
+		zeroed, zeroed, zeroed);
+	
+	// Install the new Interrupt Descriptor Table.	
+    lidt(&interrupt_descriptor_table, sizeof(IDT_Descriptor) * NUM_INTERRUPTS);
 
     /* Remap the Programmable Interrupt Controller to deliver its interrupts
      * to 0x20-0x33 (32-45), so that they don't conflict with the IA32 built-
@@ -194,25 +230,32 @@ void init_interrupts(void) {
  * not a C function, although the handler might call a C function.
  */
 void install_interrupt_handler(int num, void *handler) {
-    /* TODO:  IMPLEMENT.  See IA32 Manual, Volume 3A, Section 5.11 for an
-     *        overview of the contents of IDT Descriptors.  These are
-     *        Interrupt Gates.
-     *
-     *        The handler address must be split into two halves, so that it
-     *        can be stored into the IDT descriptor.
-     *
-     *        The segment selector should be the code-segment selector
-     *        that was set up in the bootloader.  (See boot.h for the
-     *        appropriate definition.)
-     *
-     *        The DPL component of the "type_attr" field specifies the
-     *        required privilege level to invoke the interrupt.  You can
-     *        set this to 0 (which allows anything to invoke the interrupt),
-     *        but its value isn't really relevant to us.
-     *
-     *        REMOVE THIS COMMENT WHEN YOU WRITE THE CODE.  (FEEL FREE TO
-     *        INCORPORATE THE ABOVE COMMENTS IF YOU WISH.)
+     
+    IDT_Descriptor idt_desc;
+    /* Want the low 16 bits of handler address.  Must treat address as int
+    	to do this. */
+    idt_desc.offset_15_0 = ((int) handler & 0xFFFF);
+    /* Want high 16 bits of handler address.  Must treat address as int to
+    	do this. */
+    idt_desc.offset_31_16 = ((int) handler >> 16);
+    
+    /*( SEL_CODESEG taken from boot.h */
+    idt_desc.selector = SEL_CODESEG;
+    
+    /* Unused, set to zero. */
+    idt_desc.zero = 0;
+    
+    /* type_attr:
+     * 		1--- ---- Segment present flag
+     * 		-000 ---- DPL component, suggested it be set to zero
+     * 		---- -1-- Size of gate: 1 => 32bit (0 would imply 16bit)
+     * 		---- 0-11 As per IA32 manual
+     *    0x   8    7 Hex representation
      */
+    idt_desc.type_attr = 0x87;
+    
+    /* Now install the IDT_Descriptor in our IDT. */
+    interrupt_descriptor_table[num] = idt_desc;
 }
 
 

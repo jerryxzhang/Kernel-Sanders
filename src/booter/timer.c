@@ -1,4 +1,6 @@
 #include "timer.h"
+#include "interrupts.h"
+#include "handlers.h"
 #include "ports.h"
 
 /*============================================================================
@@ -47,6 +49,14 @@
  */
 
 
+/**
+ * @brief Handles timer interrupts.
+ */
+void interrupt_timer(void) {
+	return;
+}
+
+
 void init_timer(void) {
 
     /* Turn on timer channel 0 for generating interrupts. */
@@ -63,7 +73,5 @@ void init_timer(void) {
 
     /* TODO:  Initialize other timer state here. */
 
-    /* TODO:  You might want to install your timer interrupt handler
-     *        here as well.
-     */
+    install_interrupt_handler(TIMER_INTERRUPT, timer_handler);
 }

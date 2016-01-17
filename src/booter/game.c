@@ -1,3 +1,5 @@
+#include "interrupts.h"
+
 /* This is the entry-point for the game! */
 void c_start(void) {
     /* TODO:  You will need to initialize various subsystems here.  This
@@ -7,7 +9,11 @@ void c_start(void) {
      *        do whatever else you decide to do!
      */
 
+	/* After setting up the game, we can enable interrupts again so the game
+	 * can run as expected. */
+	enable_interrupts();
+	 
     /* Loop forever, so that we don't fall back into the bootloader code. */
-    while (1) {}
+    while (1) { continue; }
 }
 

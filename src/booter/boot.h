@@ -28,34 +28,6 @@
 /* Interrupt number used to do extended read operation. */
 #define EXT_READ_INT	  0x13
 
-/* Total number of bytes that make up the DAP. */
-#define DAP_SIZE_BYTES	  0x20    /* DAP is 32 bytes. */
-
-/* Data address packet byte values. */
-#define DAP_PACKET_SIZE   0x10	  /* First byte, size of packet in bytes. */
-#define DAP_UNUSED		  0x00	  /* Second byte, unused */
-#define DAP_NUM_SECTORS_L 0x00    /* Third byte, low byte of number of
-									 sectors to read. */
-#define DAP_NUM_SECTORS_H 0x00	  /* Fourth byte, high byte of number of
-									 sectors to read. */
-								  /* Next four bytes are destination, or 
-								     program base address, in little endian. */
-#define DAP_DEST_L 		  (PROGRAM_BASE_ADDR & 0xFF)
-#define DAP_DEST_ML       ((PROGRAM_BASE_ADDR >> 8) & 0xFF)
-#define DAP_DEST_MH		  ((PROGRAM_BASE_ADDR >> 16) & 0xFF)
-#define DAP_DEST_H		  ((PROGRAM_BASE_ADDR >> 24) & 0xFF)
-								     
-/* Compile list of 16-bit numbers to push onto the stack using the above
- * defined DAP byte values. */
-#define DAP_WORD_1		  ((DAP_UNUSED << 16) | (DAP_PACKET_SIZE))
-#define DAP_WORD_2		  ((DAP_NUM_SECTORS_H << 16) | (DAP_NUM_SECTORS_L))
-#define DAP_WORD_3		  ((DAP_DEST_ML << 16) | (DAP_DEST_L))
-#define DAP_WORD_4		  ((DAP_DEST_H << 16) | (DAP_DEST_MH))
-#define DAP_WORD_5		  0x0000  /* Last 8 bytes are sector number. */
-#define DAP_WORD_6		  0x0000
-#define DAP_WORD_7		  0x0000
-#define DAP_WORD_8		  0x0000
-
 /* Entry point offset. */
 #define ENTRY_POINT_OFFSET 0x18
 

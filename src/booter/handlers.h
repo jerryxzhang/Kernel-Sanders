@@ -3,3 +3,8 @@
  *
  * You will need lines like these:  void *(irqN_handler)(void)
  */
+ 
+#include "timer.h"
+ 
+void *(timer_handler)(void);
+void *(keyboard_handler)(void);

@@ -47,27 +47,15 @@ boot_start:
     # Put the operation code into AH (extended read operation)
     mov $EXT_READ_OP_CODE, %ah
     
-    # DS:SI should point to the DAP.  We will push DAP to stack and
-    # make DS:SI point to the stack.  The DAP words are defined in the
-    # header file.  Values taken from documentation.
-    mov %sp, %si
-    push $DAP_WORD_1
-    push $DAP_WORD_2
-    push $DAP_WORD_3
-    push $DAP_WORD_4
-    push $DAP_WORD_5
-    push $DAP_WORD_6
-    push $DAP_WORD_7
-    push $DAP_WORD_8
+    # DS:SI should point to the DAP.  We defined DAP as a structure whose
+    # address will be effectively loaded into %si
+    lea dap, %si
     
     # Send the interrupt
     int $EXT_READ_INT
 
     # Carry flag set if error occurred in interrupt
     jc boot_fail
-    
-    # If no error, restore stack pointer.
-    add $DAP_SIZE_BYTES, %sp
 
     mov $STR_LOADED, %si
     call    print_str
@@ -135,9 +123,9 @@ call_c_entry:
     # The ELF-header is the very first data-structure in the data
     # that was loaded by the boot-loader, so the e_entry field
     # will be at a fixed offset from the start of the file data.
-    movl $PROGRAM_BASE_ADDR, %eax  # Start of C program
-    addl $ENTRY_POINT_OFFSET, %eax # Offset to game entry point
-    call *%eax                     # %eax now points to entry point
+    movl $PROGRAM_BASE_ADDR, %eax  # Start of boot-loader data
+    addl $ENTRY_POINT_OFFSET, %eax # Offset to game entry point from elf.pdf
+    call *(%eax)                   # %eax now points to entry point
 
     #=====================================================================
     # The rest of this file contains helper functions for the 16-bit
@@ -184,6 +172,18 @@ write_str_done:
 STR_LOADING:    .string "Loading program.\r\n"
 STR_LOADED: .string "Loaded.\r\n"
 STR_FAILED: .string "Failed to load program.\r\n"
+
+    #=====================================================================
+    # Disk Address Packet definition
+
+    .align 8
+dap:
+    .byte 0x10                  # Size of packet in bytes
+    .byte 0x00                  # Unused
+    .word 0x0001                # Number of sectors to read
+    .word 0x0000                # Offset to data destination
+    .word 0x2000                # Segment to data destination
+    .quad 0x0000000000000001    # Starting index of sectors to read
 
     #=====================================================================
     # Global Descriptor Table for protected-mode operation
