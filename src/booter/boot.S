@@ -44,6 +44,21 @@ boot_start:
 	mov	$STR_LOADING, %si
 	call	print_str
 
+    mov %sp, %si
+    mov $0x42, %ah
+    
+
+    push $0x10
+    push $128
+    push $PROGRAM_BASE_ADDR >> 4
+    push $0
+    push $0
+    push $0
+    push $0
+    push $1
+
+    jmp boot_fail
+
 	#---------------------------------------------------------------------
 	# TODO:  Load the remainder of the program into memory using int 13h
 	#        "Extended Read Operation."  If it fails, jump to boot_fail.
