@@ -220,13 +220,13 @@ void install_interrupt_handler(int num, void *handler) {
     
     /* type_attr:
      * 		1--- ---- Segment present flag
-     * 		-000 ---- DPL component, suggested it be set to zero
-     * 		---- -1-- Size of gate: 1 => 32bit (0 would imply 16bit)
-     * 		---- 0-11 As per IA32 manual
+     * 		-00- ---- DPL component, suggested it be set to zero
+     * 		---- 1--- Size of gate: 1 => 32bit (0 would imply 16bit)
+     * 		---0 -110 As per IA32 manual
      * 
-     *    0x   8    7 Hex representation
+     *    0x   8    E Hex representation
      */
-    idt_desc.type_attr = 0x87;
+    idt_desc.type_attr = 0x8E;
     
     /* Now install the IDT_Descriptor in our IDT. */
     interrupt_descriptor_table[num] = idt_desc;

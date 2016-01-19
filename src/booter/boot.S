@@ -86,8 +86,8 @@ start_protected:
     data32 addr32 lgdt gdtdesc
     
     # Enable protection mode in cr0 using boot.h constants (3).
-    mov $CR0_PE, %eax
-    or  $CR0_WP, %eax
+    mov %cr0, %eax
+    OR $(CR0_PE | CR0_WP), %eax
     mov %eax, %cr0
 
     # We're now in protected mode, but still in a 16-bit segment.  The
@@ -123,8 +123,7 @@ call_c_entry:
     # The ELF-header is the very first data-structure in the data
     # that was loaded by the boot-loader, so the e_entry field
     # will be at a fixed offset from the start of the file data.
-    movl $PROGRAM_BASE_ADDR, %eax  # Start of boot-loader data
-    addl $ENTRY_POINT_OFFSET, %eax # Offset to game entry point from elf.pdf
+    movl $(PROGRAM_BASE_ADDR + ENTRY_POINT_OFFSET), %eax  # Start of program entry point
     call *(%eax)                   # %eax now points to entry point
 
     #=====================================================================

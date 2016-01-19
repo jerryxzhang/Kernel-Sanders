@@ -17,6 +17,7 @@ timer_handler:
 	
 	
 	
+.align 4
 .globl keyboard_handler
 keyboard_handler:
 	pusha				# Save machine state.
