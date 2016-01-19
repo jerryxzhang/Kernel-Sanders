@@ -1,6 +1,13 @@
 #include "interrupts.h"
 #include "keyboard.h"
 #include "timer.h"
+#include "video.h"
+#include "game.h"
+
+int game_started = 0;
+unsigned timer_tick = 0;
+int i = 0;
+
 
 /* This is the entry-point for the game! */
 void c_start(void) {
@@ -23,8 +30,10 @@ void c_start(void) {
 	/* After setting up the game, we can enable interrupts again so the game
 	 * can run as expected. */
 	enable_interrupts();
-	 
+	
+    clear_display();
     /* Loop forever, so that we don't fall back into the bootloader code. */
-    while (1) { continue; }
+    while (1) {
+    }
 }
 

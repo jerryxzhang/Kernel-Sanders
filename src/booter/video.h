@@ -22,8 +22,12 @@
 #define YELLOW        14
 #define WHITE         15
 
+#define VIDEO_BUFFER_SIZE 4000
+#define SCREEN_WIDTH 80
+#define SCREEN_HEIGHT 25
 
 void init_video(void);
-
+void write_char(int fcolor, int bcolor, int row, int col, char toprint);
+void clear_display();
 
 #endif /* VIDEO_H */

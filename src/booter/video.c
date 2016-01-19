@@ -33,3 +33,20 @@ void init_video(void) {
      */
 }
 
+void write_char(int fcolor, int bcolor, int row, int col, char toprint)
+{
+    volatile char *video = (volatile char*)0xB8000;
+    video += ((row * SCREEN_WIDTH) + col) * 2;
+
+    *video = toprint;
+    video += 1;
+    *video = (char) (bcolor << 4) + fcolor;
+}
+
+void clear_display() {
+    unsigned i;
+    for (i = 0; i < 4000; i++) {
+        ((int*)VIDEO_BUFFER)[i] = 0;
+    }
+}
+

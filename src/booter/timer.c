@@ -2,6 +2,8 @@
 #include "interrupts.h"
 #include "handlers.h"
 #include "ports.h"
+#include "video.h"
+#include "game.h"
 
 /*============================================================================
  * PROGRAMMABLE INTERVAL TIMER
@@ -53,9 +55,20 @@
  * @brief Handles timer interrupts.
  */
 void timer_ISR(void) {
-	int a = 1;
-	a += 2;
-	return;
+	timer_tick++;
+    
+    if (timer_tick > 50) {
+        timer_tick = 0;
+        write_char(RED, WHITE, i, i, 'Q');
+        i++;
+
+        if (i >= SCREEN_HEIGHT) {
+            i = 0;
+            clear_display();
+        }
+    }
+
+    return;
 }
 
 
