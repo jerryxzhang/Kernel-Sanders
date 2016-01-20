@@ -26,11 +26,7 @@
 #define SCREEN_WIDTH 80
 #define SCREEN_HEIGHT 25
 
-void init_video(void);
-void write_char(int fcolor, int bcolor, int row, int col, char toprint);
-void clear_display();
 void display_background();
 void redraw();
-void write_string(int fcolor, int bcolor, int x, int y, const char *string);
 
 #endif /* VIDEO_H */

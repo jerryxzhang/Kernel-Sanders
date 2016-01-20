@@ -33,6 +33,17 @@ void write_char(int fcolor, int bcolor, int row, int col, char toprint)
     video[index+1] = (char) (bcolor << 4) + fcolor;
 }
 
+/** 
+ * Writes a given string with given colors to the display at given location.
+ */
+void write_string(int fcolor, int bcolor, int x, int y, const char *string)
+{
+    while( *string != 0 )
+    {
+        write_char(fcolor, bcolor, x, y++, *string++);
+    }
+}
+
 char * itoa( int value, char * str, int base );
 void print_score(int n, int x, int y) {
     char* msg = "Score: ";
@@ -172,17 +183,6 @@ void redraw() {
     if (game_lost) display_over_msg();
 }
 
-/** 
- * Writes a given string with given colors to the display at given location.
- */
-void write_string(int fcolor, int bcolor, int x, int y, const char *string)
-{
-    while( *string != 0 )
-    {
-        write_char(fcolor, bcolor, x, y++, *string++);
-        
-    }
-}
 
 char * itoa( int value, char * str, int base )
 {

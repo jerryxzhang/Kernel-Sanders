@@ -9,7 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Tim Menninger <tmenninger@caltech.edu>
-FirstName LastName <email@domain.example>
+Jerry Zhang <jerry.zhang@caltech.edu>
 FirstName LastName <email@domain.example>
 
 >> Specify how many late tokens you are using on this assignment:  
@@ -33,6 +33,9 @@ FirstName LastName <email@domain.example>
 IA32 Manual
 elf.pdf
 A website on gdb commands
+http://wiki.osdev.org/Printing_to_Screen for display functions
+http://benpfaff.org/writings/clc/prng.c for a usable prng
+
 
 			     PC BOOTER
 			     =========
@@ -47,6 +50,7 @@ which parts.
    Make sure that each member's total time is listed.
    
    Tim - 14 hours
+   Jerry - 12 hours
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
@@ -54,7 +58,7 @@ which parts.
    Tim - Implemented Bootloader and interrupts.{c,h}.  Altered keyboard.{c,h}
    and timers.{c,h} to be consistent with interrupts and bootloader.
    
-   Jerry - TODO: Complete A4 according to implementation
+   Jerry - Fixed a bug in the bootloader and implemented the Floppy Bird game.
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
@@ -72,6 +76,7 @@ not required by the question.
 
 >> A2: In 25-30 words or less, how does the user interact with the program?
 >> What are the controls?  What should the user try to do?
+    Press the spacebar to fly. Try to live for as long as possible by avoiding the obstacles.
 
 ---- DATA STRUCTURES ----
 
@@ -79,6 +84,7 @@ not required by the question.
 >> perform its operations.  Don't focus on state managed within interrupt
 >> handlers; we will look at that later.  Rather, focus on state that is
 >> part of the game implementation itself.
+The game keeps track of the positions of pipes and the bird, as well as the score, maxscore, and various other values describing which direction the bird is moving, how long it has to move that direction, and whether the game is started or lost.
 
 ---- SYNCHRONIZATION ----
 
@@ -99,26 +105,32 @@ not required by the question.
 		-code resumes
 		
 	(*) Keyboard interrupt:
+        Checks if the spacebar was pressed. If so it either starts the game or allows the bird to fly up a little.
 	
 	(^) Timer interrupt:
+        Increments a value that is used to seed a prng. Then, redraws the game screen by one timestep.
 
 >> A5: Would you say your program relies on polling or busy-waiting anywhere
 >> to accomplish its tasks?  If so, what tasks?
+The program busy waits only in the main function when it has nothing else to do. The rest of the code is entirely interrupt driven and requires no polling or waiting.
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose the project you did?
+Floppy bird is fun, addictive, and relatively easy to implement. It is also important to pop culture.
 
 >> A7: Did your choice of project affect any of the specific implementation
 >> details of the various subsystems that you needed to use?  (For example,
 >> if you implemented a scrolling game, did you implement specialized high-
 >> performance video code to scroll the screen?)
+No.
 
 >> A8: Did you run into any technical or resource limitations in the
 >> implementation of your program?  (For example, bootloader didn't fit,
 >> or a really useful standard library wasn't available, or you couldn't
 >> achieve the desired performance level, etc.)  If so, what steps did you
 >> take to try to overcome those limitations?
+There was some vertical tearing in the graphics, so I attempted to optimize the redrawing code to only redraw pixels that change. It helped a little, but did not fix it entirely. I would have preferred having standard libraries available, but I found an isolated source file for a prng and it worked fine for my purposes. 
 
 			     BOOT SECTOR
 			     ===========
@@ -162,21 +174,26 @@ not required by the question.
 >> or a graphical mode?  Where does the video buffer start?  How is data
 >> represented in this mode?  (Please be brief; we don't need complete
 >> documentation on the video system.)
+It uses a text mode, the video buffer starts at the location defined in video.c. The screen contains 25x80 characters, and each character has a value and a foreground and background color. The character is one byte, and each color is 4 bits making the entire buffer 25x80x2 bytes = 4000 bytes.
 
 >> C2: Does your video code maintain any variables or data structures to
 >> facilitate video output?  Briefly describe these values and their
 >> purposes here.
+The video code does not require and data structures aside from those used to keep game state. The video functions instead contain knowledge of how to draw pieces of the game.
 
 ---- ALGORITHMS ----
 
 >> C3: What abstraction does your video code present to your main program?
 >> Briefly describe the higher-level operations you decided to implement.
+The video code only needs to expose a function to draw the background, which is done immediately at the start of the program, and another to redraw the game screen, which is done every few timer interrupts. 
+
 
 ---- RATIONALE ----
 
 >> C4: Did you take any specific steps to improve the appearance of your
 >> program's display output?  For example, using Extended ASCII Codes, or
 >> choosing specific colors to represent different things?
+The display uses extended ascii codes as well as background and foreground colors to faithfully reproduce the feel of the original flappy bird.
 
 			  TIMER SUBSYSTEM
 			  ===============
@@ -185,14 +202,17 @@ not required by the question.
 
 >> D1: What state does your timer subsystem manage?  Describe the variables
 >> or data structures that it maintains, and how they are used.
+The timer manages a counter variable that is used to seed a prng, and allows certain operations to happen every few interrupts.
 
 ---- ALGORITHMS ----
 
 >> D2: What abstraction does your timer code present to your main program?
 >> Briefly describe the higher-level operations you decided to implement.
+The timer code does not present any functions to the rest of the program other than the interrupt handler.
 
 >> D3: Did you change the timer frequency from 100Hz?  If so, what did you
 >> change it to, and why?
+No.
 
 ---- SYNCHRONIZATION ----
 
@@ -200,6 +220,7 @@ not required by the question.
 >> for timer interrupts to generate race conditions in updating your
 >> program's global state?  If so, what steps did you take to ensure that
 >> such situations cannot occur?
+It may be possible to generate race conditions within the program, but we did not encounter any problems with them during development and they do not seem to be present in the final code.
 
 			KEYBOARD SUBSYSTEM
 			==================
@@ -208,18 +229,22 @@ not required by the question.
 
 >> E1: What state does your keyboard subsystem manage?  Describe the variables
 >> or data structures that it maintains, and how they are used.
+None.
 
 >> E2: How do your data structures handle keys with multi-byte scan-codes?
+They do not.
 
 ---- ALGORITHMS ----
 
 >> E3: What abstraction does your keyboard code present to your main program?
 >> Briefly describe the higher-level operations you decided to implement.
+The keyboard code offers no abstractions or functions except for the interrupt handler.
 
 >> E4: Does your keyboard subsystem expose scan-codes directly to your main
 >> program, or does it preprocess them and expose other information to your
 >> main program?  If scan-code data is preprocessed, briefly describe what
 >> information is actually exposed, and how it is derived from scan-codes.
+It processes the scan code and takes an action depending on the code. The only information exposed is whether the code was a space key press.
 
 ---- SYNCHRONIZATION ----
 
@@ -227,17 +252,20 @@ not required by the question.
 >> potential for race conditions in updating the keyboard subsystem's
 >> internal state?  If so, what steps did you take to ensure that such
 >> situations cannot occur?
+Possibly, but we encountered no problems.
 
 >> E6: Given how your program handles keyboard events, is there any
 >> potential for keyboard interrupts to generate race conditions in updating
 >> your program's global state?  If so, what steps did you take to ensure
 >> that such situations cannot occur?
+Possibly, but we encountered no problems.
 
 ---- RATIONALE ----
 
 >> E7: Why did you choose the design and data representation that your
 >> keyboard subsystem uses?  How is it suited to your program's overall
 >> operation?
+The program does not require a complicated keyboard subsystem. It has a very simple interface.
 
 			  SURVEY QUESTIONS
 			  ================
