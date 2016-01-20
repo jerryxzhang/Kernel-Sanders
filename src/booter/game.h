@@ -1,6 +1,6 @@
 #define NUM_PIPES 10
 #define PIPE_TIME 30
-#define PIPE_GAP 9
+#define PIPE_GAP 7
 #define SKY_HEIGHT 22
 #define BIRD_POS 20
 
