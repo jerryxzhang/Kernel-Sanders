@@ -6,11 +6,11 @@
 #     we invoke gcc to assemble boot.S, and we use gcc to process the
 #     linker script, and so forth.
 
-CFLAGS=-g
+CFLAGS=-g -fno-stack-protector 
 
 BOOT_BIN = boot.bin
 
-OBJS = game.o video.o interrupts.o handlers.o timer.o keyboard.o
+OBJS = game.o video.o interrupts.o handlers.o timer.o keyboard.o prng.o
 PROGRAM_OBJ = program.o
 PROGRAM_BIN = program.bin
 

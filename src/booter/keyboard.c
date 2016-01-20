@@ -2,6 +2,8 @@
 #include "handlers.h"
 #include "keyboard.h"
 #include "ports.h"
+#include "game.h"
+#include "video.h"
 
 /* This is the IO port of the PS/2 controller, where the keyboard's scan
  * codes are made available.  Scan codes can be read as follows:
@@ -26,31 +28,36 @@
  */
 #define KEYBOARD_PORT 0x60
 
-
-/* TODO:  You can create static variables here to hold keyboard state.
- *        Note that if you create some kind of circular queue (a very good
- *        idea, you should declare it "volatile" so that the compiler knows
- *        that it can be changed by exceptional control flow.
- *
- *        Also, don't forget that interrupts can interrupt *any* code,
- *        including code that fetches key data!  If you are manipulating a
- *        shared data structure that is also manipulated from an interrupt
- *        handler, you might want to disable interrupts while you access it,
- *        so that nothing gets mangled...
- */
- 
-
 /**
  * @brief Handles keyboard interrupts.
  */
 void keyboard_ISR(void) {
+    unsigned char scan_code = inb(KEYBOARD_PORT);
+    
+    switch (scan_code) {
+        case SPACE_PRESS:
+            if (game_lost) {
+                display_background();
+                init_game();
+            }
+
+            if (!game_started) {
+                game_started = 1;
+                display_background();
+                init_game();
+            }
+            bird_direction = -1;
+            bird_countdown = 3;
+            break;
+
+        default:
+            break;
+    }
 	return;
 }
 
 
 void init_keyboard(void) {
-    /* TODO:  Initialize any state required by the keyboard handler. */
-
     install_interrupt_handler(KEYBOARD_INTERRUPT, keyboard_handler);
 }
 

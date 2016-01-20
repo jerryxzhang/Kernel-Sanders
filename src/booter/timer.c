@@ -56,18 +56,7 @@
  */
 void timer_ISR(void) {
 	timer_tick++;
-    
-    if (timer_tick > 50) {
-        timer_tick = 0;
-        write_char(RED, WHITE, i, i, 'Q');
-        i++;
-
-        if (i >= SCREEN_HEIGHT) {
-            i = 0;
-            clear_display();
-        }
-    }
-
+    redraw();
     return;
 }
 
