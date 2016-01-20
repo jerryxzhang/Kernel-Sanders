@@ -45,12 +45,16 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
+   
+   Tim - 14 hours
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
    
    Tim - Implemented Bootloader and interrupts.{c,h}.  Altered keyboard.{c,h}
    and timers.{c,h} to be consistent with interrupts and bootloader.
+   
+   Jerry - TODO: Complete A4 according to implementation
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
@@ -84,6 +88,19 @@ not required by the question.
 >> of operations or updates that is performed within your program?
 >> Similarly, when a keyboard interrupt occurs, what does your program do
 >> in response?
+
+	Interrupt sequence:
+		-Looks up interrupt handler in IRQ vector
+		-Runs handler in handlers.S
+		-handler.S calls handler in C file
+			-either keyboard (*) or timer (^)
+		-C file returns
+		-S file returns
+		-code resumes
+		
+	(*) Keyboard interrupt:
+	
+	(^) Timer interrupt:
 
 >> A5: Would you say your program relies on polling or busy-waiting anywhere
 >> to accomplish its tasks?  If so, what tasks?
@@ -120,13 +137,21 @@ not required by the question.
 >> (If not, just say no.)  If so, what information is passed, and how
 >> is it passed?
 
+   No
+
 ---- ALGORITHMS ----
 
 >> B3: Briefly describe how your bootloader brings your program into
 >> memory.  Does it perform one large load, or multiple smaller loads?
 
+   The bootloader calls interrupt 0x13 which loads our program in one large
+   load into memory.  The bootloader sets the registers so the BIOS
+   "knows" the settings to use when copying.
+
 >> B4: Did you add any BIOS calls to your bootloader to prepare for your
 >> main program?  (i.e. things that aren't available in protected mode)
+
+   Interrupt 0x13 to copy the code into memory.
 
 			  VIDEO SUBSYSTEM
 			  ===============
@@ -228,6 +253,10 @@ penalized.  We can't fix things until we know about them.  :-)
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+   Working on the interrupts gave good insight.  It seems like the rest of
+   the code couldn't be written without a thorough understanding of how the
+   interrupts worked.
 
 >> Were there any parts of the assignment that you felt were unnecessarily
 >> tedious or pointless?
