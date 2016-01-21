@@ -18,8 +18,8 @@ FirstName LastName <email@domain.example>
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
-   commit ...
+   Repository URL:  /cs/courses/cs124/teams/KernelSanders.git
+   commit 9884bc358ec0ac2c512d3b663aa0aa2856018702 
 
 ---- PRELIMINARIES ----
 
