@@ -60,17 +60,6 @@ boot_start:
     mov $STR_LOADED, %si
     call    print_str
 
-    #---------------------------------------------------------------------
-    # TODO:  If you want to do anything else with the computer hardware
-    #        using the BIOS, here is the place to do it.  After this we
-    #        will transition into 32-bit protected mode, and the BIOS will
-    #        no longer be available to use.
-    #
-    #        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.
-    #        (OR IF YOU DECIDE YOU DON'T WANT TO PUT ANYTHING HERE.)
-    #           !! Not implemented yet, but leaving here in case we do
-    #---------------------------------------------------------------------
-
     #=====================================================================
     # Next, set up for transition from 16-bit real mode to 32-bit
     # protected mode.  All we strictly need for this is a Global

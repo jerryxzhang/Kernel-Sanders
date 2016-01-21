@@ -51,6 +51,7 @@ which parts.
    
    Tim - 14 hours
    Jerry - 12 hours
+   Jack- 7 hours
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
@@ -59,6 +60,8 @@ which parts.
    and timers.{c,h} to be consistent with interrupts and bootloader.
    
    Jerry - Fixed a bug in the bootloader and implemented the Floppy Bird game.
+
+   Jack - Tried to do some of the bonus points
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
