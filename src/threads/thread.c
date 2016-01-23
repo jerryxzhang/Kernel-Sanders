@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -69,6 +70,7 @@ static void *alloc_frame(struct thread *, size_t size);
 static void schedule(void);
 void thread_schedule_tail(struct thread *prev);
 static tid_t allocate_tid(void);
+void thread_wake(struct thread *, void* aux);
 
 /*! Initializes the threading system by transforming the code
     that's currently running into a thread.  This can't work in
@@ -110,6 +112,16 @@ void thread_start(void) {
     sema_down(&idle_started);
 }
 
+void thread_wake(struct thread *t, void* aux) {
+    if (t->wake_time == -1) return;
+
+    int64_t cur_time = *((int64_t*) aux);
+    if (cur_time >= t->wake_time) {
+        t->wake_time = -1;
+        thread_unblock(t);
+    }
+}
+
 /*! Called by the timer interrupt handler at each timer tick.
     Thus, this function runs in an external interrupt context. */
 void thread_tick(void) {
@@ -128,6 +140,10 @@ void thread_tick(void) {
     /* Enforce preemption. */
     if (++thread_ticks >= TIME_SLICE)
         intr_yield_on_return();
+
+    /* Wake any sleeping threads that are done. */
+    int64_t curtime = timer_ticks();
+    thread_foreach(thread_wake, (void*) &curtime);
 }
 
 /*! Prints thread statistics. */
@@ -403,6 +419,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->stack = (uint8_t *) t + PGSIZE;
     t->priority = priority;
     t->magic = THREAD_MAGIC;
+    t->wake_time = -1;
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
