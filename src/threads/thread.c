@@ -267,13 +267,11 @@ void thread_unblock(struct thread *t) {
     //    is higher than that which is running, so it is also higher than
     //    everything in the queue and we can simply yield to the next thread to
     //    run.
-    if (t->priority > thread_current()->priority && old_level == INTR_ON) {
-		// Can yield thread because interrupts are on
-		thread_yield();
-	}
-	else if (t->priority > thread_current()->priority) {
+    if (t->priority > thread_current()->priority) {
 		// Need to yield, but interrupts are off so it would screw up the
-		//    caller's operations.
+		//    caller's operations.  As soon as interrupts are turned on,
+		//    this flag will cause a thread switch.  This may be as soon as
+		//    resetting the original interrupt level at the end of this func.
 		thread_waiting = 1;
 	}
 	
@@ -355,25 +353,72 @@ void thread_foreach(thread_action_func *func, void *aux) {
     }
 }
 
-/*! Sets the current thread's priority to NEW_PRIORITY. */
+/*! Sets the current thread's priority to NEW_PRIORITY.  This is called to set
+    its original priority.  If the change makes its original priority higher
+    than its current priority, it will change accordingly.  Otherwise, this
+    will not take effect until the priority donation list is empty or contains
+    only priorities less than NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
-	int8_t old_priority = thread_current()->priority;
-    thread_current()->priority = new_priority;
-    
-    if (old_priority < new_priority && intr_get_level() == INTR_ON) {
-		thread_yield();
+	// Change the original priority regardless.
+	thread_current()->orig_priority = new_priority;
+	
+	// Only change the current priority if it doesn't lowball a donation.
+	if (list_empty(&thread_current()->priority_donations)) {
+		thread_current()->priority = new_priority;
 	}
-	else if (old_priority < new_priority) {
-		thread_waiting = 1;
+	else if (new_priority > thread_current()->priority) {
+		thread_current()->priority = new_priority;
+	}
+    
+    // Want to see if this change made it so that the thread is no longer of
+    //    highest priority.
+    int high_priority = -1;
+    if (!list_empty(&ready_list)) {
+		high_priority = list_entry(list_highest_priority(&ready_list), \
+						struct thread, elem)->priority;
+	}
+    
+    if (high_priority > new_priority) {
+		thread_yield();
 	}
 }
 
 /*! Gives priority to a thread with lower priority. */
 void thread_donate_priority(struct thread *donate_to) {
+	// Let low priority thread know it is being donated to
+	list_push_back(&donate_to->priority_donations,
+					&thread_current()->priority_elem);
+					
+	// Give higher priority to blocking thread
+	donate_to->priority = thread_get_priority();
+	
+	// Want this to propagate.  If donate_to thread is waiting on
+	//    another thread, make the priority trickle down.
+	struct lock *next_lock = donate_to->lock_needed;
+	struct thread *curr = donate_to;
+	while (next_lock != NULL) {
+		ASSERT(next_lock->holder != NULL);
+		next_lock->holder->priority = curr->priority;
+		
+		curr = next_lock->holder;
+		next_lock = curr->lock_needed;
+	}
 }
 
-/*! Gives back priority donation. */
-void thread_return_priority(void) {
+/*! Takes back the priority from the lower-priority thread. */
+void thread_takeback_priority(struct thread *donor, struct thread *donee) {
+	list_remove(&donor->priority_elem);
+	
+	// Want to restore the donee's priority to either its original priority,
+	//    or the highest of all the donations it still has.
+	struct list_elem *e;
+	if (list_empty(&donee->priority_donations)) {
+		donee->priority = donee->orig_priority;
+	}
+	else {
+		e = list_highest_priority(&donee->priority_donations);
+		donee->priority = list_entry(e, struct thread, elem)->priority;
+	}
 }
 
 /*! Returns the current thread's priority. */
@@ -475,6 +520,8 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     strlcpy(t->name, name, sizeof t->name);
     t->stack = (uint8_t *) t + PGSIZE;
     t->priority = priority;
+    t->orig_priority = priority;
+    t->lock_needed = NULL;
     t->magic = THREAD_MAGIC;
     t->wake_time = -1;
     list_init(&t->priority_donations);

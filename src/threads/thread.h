@@ -112,6 +112,9 @@ struct thread {
     
     /*! Priority donations received and given. */
     struct list priority_donations;		/*!< Threads from which priority was received. */
+    struct list_elem priority_elem;		/*!< The resource passed around as priority donations. */
+    int orig_priority;					/*!< Keep track of the priority before receiving donation. */
+	struct lock *lock_needed;			/*!< The lock that the struct needs. */
 
 #ifdef USERPROG
     /*! Owned by userprog/process.c. */
@@ -124,11 +127,6 @@ struct thread {
     /**@{*/
     unsigned magic;                     /* Detects stack overflow. */
     /**@}*/
-};
-
-struct donation_elem {
-	struct list_elem elem;				/*!< Thread that donated the priority. */
-	int8_t old_priority;				/*!< Priority before donation. */
 };
 
 /*! If false (default), use round-robin scheduler.
@@ -149,7 +147,7 @@ void thread_block(void);
 void thread_unblock(struct thread *);
 
 void thread_donate_priority(struct thread *donate_to);
-void thread_return_priority(void);
+void thread_takeback_priority(struct thread *donor, struct thread *donee);
 
 struct thread *thread_current (void);
 tid_t thread_tid(void);
