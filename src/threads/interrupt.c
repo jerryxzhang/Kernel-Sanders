@@ -90,6 +90,13 @@ enum intr_level intr_enable(void) {
        See [IA32-v2b] "STI" and [IA32-v3a] 5.8.1 "Masking Maskable
        Hardware Interrupts". */
     asm volatile ("sti");
+    
+    // If a thread of higher priority than the running thread is in the
+    //    queue, yield so we can start running it.
+    if (thread_waiting) {
+		thread_waiting = 0;
+		thread_yield();
+	}
 
     return old_level;
 }

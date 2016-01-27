@@ -18,6 +18,11 @@ enum thread_status {
     THREAD_DYING        /*!< About to be destroyed. */
 };
 
+/*! When a thread becomes ready of higher priority than that which is running,
+    it must start running immediately.  If it is inside a process which has
+    interrupts off, then we must wait until interrupts are on. */
+bool thread_waiting;
+
 /*! Thread identifier type.
     You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -104,6 +109,9 @@ struct thread {
     /**@{*/
     struct list_elem elem;              /*!< List element. */
     /**@}*/
+    
+    /*! Priority donations received and given. */
+    struct list priority_donations;		/*!< Threads from which priority was received. */
 
 #ifdef USERPROG
     /*! Owned by userprog/process.c. */
@@ -116,6 +124,11 @@ struct thread {
     /**@{*/
     unsigned magic;                     /* Detects stack overflow. */
     /**@}*/
+};
+
+struct donation_elem {
+	struct list_elem elem;				/*!< Thread that donated the priority. */
+	int8_t old_priority;				/*!< Priority before donation. */
 };
 
 /*! If false (default), use round-robin scheduler.
@@ -134,6 +147,9 @@ tid_t thread_create(const char *name, int priority, thread_func *, void *);
 
 void thread_block(void);
 void thread_unblock(struct thread *);
+
+void thread_donate_priority(struct thread *donate_to);
+void thread_return_priority(void);
 
 struct thread *thread_current (void);
 tid_t thread_tid(void);
@@ -154,6 +170,9 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+
+/*! Returns the list_item of the highest priority thread in the list. */
+struct list_elem *list_highest_priority (struct list *in_list);
 
 #endif /* threads/thread.h */
 
