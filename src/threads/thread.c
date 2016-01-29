@@ -54,10 +54,18 @@ static long long user_ticks;    /*!< # of timer ticks in user programs. */
 #define TIME_SLICE 4            /*!< # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /*!< # of timer ticks since last yield. */
 
+/*** BSD Scheduler variables ***/
+
 /*! If false (default), use round-robin scheduler.
     If true, use multi-level feedback queue scheduler.
     Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+struct list ready_queues[64];
+fixed_point load_avg;
+
+void update_recent_cpu(struct thread* t);
+void update_load_avg(void);
+/*** End BSD Scheduler variables ***/
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -115,6 +123,11 @@ void thread_init(void) {
     lock_init(&tid_lock);
     list_init(&ready_list);
     list_init(&all_list);
+
+    if (thread_mlfqs) {
+        // TODO initialize each queue
+        load_avg = 0;
+    }
 
     /* Set up a thread structure for the running thread. */
 	thread_waiting = 0;
@@ -261,6 +274,9 @@ void thread_unblock(struct thread *t) {
     old_level = intr_disable();
     ASSERT(t->status == THREAD_BLOCKED);
 	list_push_back(&ready_list, &t->elem);
+
+    // TODO if we're running BSD scheduler, add thread to one of 64 queues based on priority
+
 	t->status = THREAD_READY;
     
     // Because the highest priority thread is running, this thread's priority
@@ -332,8 +348,11 @@ void thread_yield(void) {
     ASSERT(!intr_context());
 
     old_level = intr_disable();
-    if (cur != idle_thread) 
+    if (cur != idle_thread) {
+        // TODO if BSD scheduler, then push it onto a queue instead
+
         list_push_back(&ready_list, &cur->elem);
+    }
     cur->status = THREAD_READY;
     schedule();
     intr_set_level(old_level);
@@ -427,28 +446,42 @@ int thread_get_priority(void) {
 }
 
 /*! Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED) {
-    /* Not yet implemented. */
+void thread_set_nice(int nice) {
+    thread_current()->nice = nice;
 }
 
 /*! Returns the current thread's nice value. */
 int thread_get_nice(void) {
-    /* Not yet implemented. */
-    return 0;
+    return thread_current()->nice;
 }
 
 /*! Returns 100 times the system load average. */
 int thread_get_load_avg(void) {
-    /* Not yet implemented. */
-    return 0;
+    return round_fp(multiply(to_fp(100), load_avg));
 }
 
 /*! Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu(void) {
-    /* Not yet implemented. */
-    return 0;
+    return round_fp(multiply(to_fp(100), thread_current()->recent_cpu));
 }
-
+
+/**
+ * Updates current thread recent cpu. Call for all threads exactly once a second.
+ */
+void update_recent_cpu(struct thread* t) {
+    fixed_point a = divide( multiply(to_fp(2), load_avg), multiply(to_fp(2), load_avg) + to_fp(1) );
+    t->recent_cpu = multiply(t->recent_cpu, a) + to_fp(t->nice);
+}
+
+/**
+ * Updates system load avg. Call exactly once a second.
+ */
+void update_load_avg(void) {
+    load_avg = multiply( divide(to_fp(59), to_fp(60)) , load_avg ) + 
+        divide(to_fp(1), to_fp(60)) * list_size(&ready_list);
+    // TODO update number of ready threads to use the 64 queues
+}
+
 /*! Idle thread.  Executes when no other thread is ready to run.
 
     The idle thread is initially put on the ready list by thread_start().
@@ -547,6 +580,12 @@ static void * alloc_frame(struct thread *t, size_t size) {
     thread can continue running, then it will be in the run queue.)  If the
     run queue is empty, return idle_thread. */
 static struct thread * next_thread_to_run(void) {
+    if (thread_mlfqs) {
+        // BSD Scheduling
+        // TODO Take thread from highest priority queue
+        return NULL;
+    }
+
     if (list_empty(&ready_list))
       return idle_thread;
     
