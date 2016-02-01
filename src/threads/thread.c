@@ -510,8 +510,9 @@ void update_recent_cpu(struct thread* t) {
  * Updates system load avg. Call exactly once a second.
  */
 void update_load_avg(void) {
+
     load_avg = multiply( divide(to_fp(59), to_fp(60)) , load_avg ) + 
-        divide(to_fp(1), to_fp(60)) * (list_size(&ready_list) + 1);
+        divide(to_fp(1), to_fp(60)) * (list_size(&ready_list) + (int)(thread_current()!=idle_thread));
     // TODO update number of ready threads to use the 64 queues
 }
 
