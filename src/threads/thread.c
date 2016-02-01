@@ -480,7 +480,9 @@ int thread_get_priority(void) {
 
 /*! Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice) {
-    thread_current()->nice = nice;
+    struct thread *t = thread_current();
+    t->nice = nice;
+
 }
 
 /*! Returns the current thread's nice value. */
@@ -502,7 +504,7 @@ int thread_get_recent_cpu(void) {
  * Updates current thread recent cpu. Call for all threads exactly once a second.
  */
 void update_recent_cpu(struct thread* t) {
-    fixed_point a = divide( multiply(to_fp(2), load_avg), multiply(to_fp(2), load_avg) + to_fp(1) );
+    fixed_point a = divide( 2 * load_avg, 2 * load_avg + to_fp(1) );
     t->recent_cpu = multiply(t->recent_cpu, a) + to_fp(t->nice);
 }
 
@@ -511,8 +513,8 @@ void update_recent_cpu(struct thread* t) {
  */
 void update_load_avg(void) {
 
-    load_avg = multiply( divide(to_fp(59), to_fp(60)) , load_avg ) + 
-        divide(to_fp(1), to_fp(60)) * (list_size(&ready_list) + (int)(thread_current()!=idle_thread));
+    load_avg = multiply( to_fp(59) / 60 , load_avg ) + 
+        to_fp(1) / 60 * (list_size(&ready_list) + (int)(thread_current()!=idle_thread));
     // TODO update number of ready threads to use the 64 queues
 }
 
