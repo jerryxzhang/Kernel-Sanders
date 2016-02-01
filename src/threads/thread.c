@@ -60,8 +60,8 @@ static unsigned thread_ticks;   /*!< # of timer ticks since last yield. */
     If true, use multi-level feedback queue scheduler.
     Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-struct list ready_queues[64];
 fixed_point load_avg;
+fixed_point load_coefficient;
 
 void update_recent_cpu(struct thread* t);
 void update_load_avg(void);
@@ -162,6 +162,22 @@ void thread_wake(struct thread *t, void* aux) {
     }
 }
 
+void thread_recent_cpu_decay(struct thread *t, void* aux) {
+    t->recent_cpu = add(multiply(load_coefficient, t->recent_cpu), t->nice);
+}
+
+void thread_update_mlfqs_priority(struct thread *t, void* aux) {
+    if (t == idle_thread)
+        return;
+    int update = PRI_MAX - round_fp(t->recent_cpu / 4) - (t->nice * 2);
+    if (update < PRI_MIN)
+        t->priority = PRI_MIN;
+    else if (update > PRI_MAX)
+        t->priority = PRI_MAX;
+    else
+        t->priority = update;
+}
+
 /*! Called by the timer interrupt handler at each timer tick.
     Thus, this function runs in an external interrupt context. */
 void thread_tick(void) {
@@ -176,6 +192,27 @@ void thread_tick(void) {
 #endif
     else
         kernel_ticks++;
+
+    if (thread_mlfqs) {
+        
+        t->recent_cpu++;
+        int ticks = idle_ticks + user_ticks + kernel_ticks;
+
+        // Things that happen every second: update load_avg, decay recent_cpu
+        if (ticks % TIMER_FREQ == 0){
+            // load_avg = 59/60 * load_avg + 1/60 * ready_threads
+            load_avg = multiply(to_fp(59)/60, load_avg) + (to_fp(1)/60) * list_size(&ready_list);
+            load_coefficient = divide(2 * load_avg, add(2 * load_avg, 1)); 
+            thread_foreach(thread_recent_cpu_decay, NULL);
+
+        }   
+        // update priotity every 4 ticks
+        if (ticks % 4 == 0)
+            thread_foreach(thread_update_mlfqs_priority, NULL);
+
+
+
+    }
 
     /* Enforce preemption. */
     if (++thread_ticks >= TIME_SLICE)
@@ -580,12 +617,7 @@ static void * alloc_frame(struct thread *t, size_t size) {
     thread can continue running, then it will be in the run queue.)  If the
     run queue is empty, return idle_thread. */
 static struct thread * next_thread_to_run(void) {
-    if (thread_mlfqs) {
-        // BSD Scheduling
-        // TODO Take thread from highest priority queue
-        return NULL;
-    }
-
+  
     if (list_empty(&ready_list))
       return idle_thread;
     
