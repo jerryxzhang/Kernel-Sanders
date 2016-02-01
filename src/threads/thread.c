@@ -162,11 +162,7 @@ void thread_wake(struct thread *t, void* aux) {
     }
 }
 
-void thread_recent_cpu_decay(struct thread *t, void* aux) {
-    t->recent_cpu = add(multiply(load_coefficient, t->recent_cpu), t->nice);
-}
-
-void thread_update_mlfqs_priority(struct thread *t, void* aux) {
+void thread_update_mlfqs_priority(struct thread *t) {
     if (t == idle_thread)
         return;
     int update = PRI_MAX - round_fp(t->recent_cpu / 4) - (t->nice * 2);
@@ -201,9 +197,9 @@ void thread_tick(void) {
         // Things that happen every second: update load_avg, decay recent_cpu
         if (ticks % TIMER_FREQ == 0){
             // load_avg = 59/60 * load_avg + 1/60 * ready_threads
-            load_avg = multiply(to_fp(59)/60, load_avg) + (to_fp(1)/60) * list_size(&ready_list);
+            update_load_avg();
             load_coefficient = divide(2 * load_avg, add(2 * load_avg, 1)); 
-            thread_foreach(thread_recent_cpu_decay, NULL);
+            thread_foreach(update_recent_cpu, NULL);
 
         }   
         // update priotity every 4 ticks
@@ -515,7 +511,7 @@ void update_recent_cpu(struct thread* t) {
  */
 void update_load_avg(void) {
     load_avg = multiply( divide(to_fp(59), to_fp(60)) , load_avg ) + 
-        divide(to_fp(1), to_fp(60)) * list_size(&ready_list);
+        divide(to_fp(1), to_fp(60)) * (list_size(&ready_list) + 1);
     // TODO update number of ready threads to use the 64 queues
 }
 
