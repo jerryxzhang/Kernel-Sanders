@@ -125,7 +125,6 @@ void thread_init(void) {
     list_init(&all_list);
 
     if (thread_mlfqs) {
-        // TODO initialize each queue
         load_avg = 0;
     }
 
@@ -191,7 +190,7 @@ void thread_tick(void) {
 
     if (thread_mlfqs) {
         
-        t->recent_cpu++;
+        t->recent_cpu = add(t->recent_cpu, 1);
         int ticks = idle_ticks + user_ticks + kernel_ticks;
 
         // Things that happen every second: update load_avg, decay recent_cpu
@@ -203,15 +202,23 @@ void thread_tick(void) {
 
         }   
         // update priotity every 4 ticks
-        if (ticks % 4 == 0)
+        if (ticks % 4 == 0){
             thread_foreach(thread_update_mlfqs_priority, NULL);
 
+            if (!list_empty(&ready_list)) {
+                int high_priority = list_entry(
+                    list_highest_priority(&ready_list),
+                    struct thread, elem)->priority;
 
+                if (high_priority > t->priority) 
+                    intr_yield_on_return();
 
+            }            
+        }
     }
 
     /* Enforce preemption. */
-    if (++thread_ticks >= TIME_SLICE)
+    else if (++thread_ticks >= TIME_SLICE)
         intr_yield_on_return();
 
     /* Wake any sleeping threads that are done. */
@@ -484,15 +491,14 @@ void thread_set_nice(int nice) {
     t->nice = nice;
     thread_update_mlfqs_priority(t);
 
-    // Want to see if this change made it so that the thread is no longer of
-    //    highest priority.
-    int high_priority = -1;
-    if (!list_empty(&ready_list)) 
-        high_priority = list_entry(list_highest_priority(&ready_list), \
+    if (!list_empty(&ready_list)) {
+        int high_priority = list_entry(list_highest_priority(&ready_list), \
                         struct thread, elem)->priority;
-    
-    if (high_priority > t->priority) 
-        thread_yield();
+
+        if (high_priority > t->priority) 
+            thread_yield();
+
+    }
     
 
 }
@@ -569,7 +575,7 @@ static void kernel_thread(thread_func *function, void *aux) {
     function(aux);       /* Execute the thread function. */
     thread_exit();       /* If function() returns, kill the thread. */
 }
-
+
 /*! Returns the running thread. */
 struct thread * running_thread(void) {
     uint32_t *esp;
