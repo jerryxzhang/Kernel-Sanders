@@ -482,6 +482,18 @@ int thread_get_priority(void) {
 void thread_set_nice(int nice) {
     struct thread *t = thread_current();
     t->nice = nice;
+    thread_update_mlfqs_priority(t);
+
+    // Want to see if this change made it so that the thread is no longer of
+    //    highest priority.
+    int high_priority = -1;
+    if (!list_empty(&ready_list)) 
+        high_priority = list_entry(list_highest_priority(&ready_list), \
+                        struct thread, elem)->priority;
+    
+    if (high_priority > t->priority) 
+        thread_yield();
+    
 
 }
 
@@ -515,7 +527,6 @@ void update_load_avg(void) {
 
     load_avg = multiply( to_fp(59) / 60 , load_avg ) + 
         to_fp(1) / 60 * (list_size(&ready_list) + (int)(thread_current()!=idle_thread));
-    // TODO update number of ready threads to use the 64 queues
 }
 
 /*! Idle thread.  Executes when no other thread is ready to run.
