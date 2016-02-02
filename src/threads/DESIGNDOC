@@ -8,11 +8,11 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
+Tim Menninger <tmenninger@caltech.edu>
 FirstName LastName <email@domain.example>
 FirstName LastName <email@domain.example>
 
->> Specify how many late tokens you are using on this assignment:  
+>> Specify how many late tokens you are using on this assignment: 0
 
 >> What is the Git repository and commit hash for your submission?
    (You only need to include the commit-hash in the file you submit
@@ -41,9 +41,13 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
+   
+   Tim 16 hours
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
+   
+   Tim - Priority donations
 
 			     ALARM CLOCK
 			     ===========
@@ -84,26 +88,132 @@ which parts.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Added to struct thread:
+	struct list priority_donations;
+    struct list_elem priority_elem;
+    int orig_priority;
+	struct lock *lock_needed;
+	
+	-priority_donations is a list of priority_elems that have been donated
+	to this thread.
+	-priority_elem is the list_element that a thread can donate to another
+	lower priority thread
+	-orig_priority is the priority of the thread if nothing has been donated
+	to it
+	-lock_needed is a pointer to the resource the thread donated its priority
+	to get, NULL if none.
+	
+Added global variable:
+	bool thread_waiting;
+	
+	-thread_waiting is a flag that indicates a ready thread has higher priority
+	than the running thread.
+
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
+
+When thread A needs resource R, which is owned by lower priority thread B, A
+keeps a pointer to resource R and then adds its priority_elem to B's
+priority_donations list, updating B's running priority.  When B lets go of
+resource R, it is realized that A is waiting on R because it is in the waiting
+list and A's lock_needed points to R.  Thus, we know that B has a priority_elem
+from A to remove from priority_donations.  This happens and B's priority is set
+to either the max priority donation remaining or its orig_priority.  A's
+lock_needed goes to NULL and A is allowed to proceed.  If it turned out that
+B could not run because resource S was needed but owned by lower priority
+thread C, then when donating to B, B would realize it has a lock_needed and
+donate its priority to the holder of lock_needed.  The releasing of the
+resource and resetting of priority works exactly the same whether it is a
+nested priority donation or not.
+
+Refer to the ASCII art diagram for the situation in which thread priority from
+high to low is A B C D.  Each column is another step in the process.  Thread
+row is the priority of the thread.  X means the thread is not ready, whether
+that means it is blocked or not running or dead.
+
+1: Currently, C is blocked by D
+2: B needs something owned by C, so it gives its priority to C which gives
+that priority to D
+3: D finishes with C but still needs to run with B
+4: A becomes ready, has higher priority than B
+5: A finishes, thread D still runs with B
+6: D finishes with B, B can run.  C still not highest priority
+7: A needs resource from C. C gets A's priority and runs
+8: C finishes.  A finishes.  B can run. D now ready but lower priority
+9: B finishes, D can run
+10: D finishes
+
+            1    2    3    4    5    6    7    8    9    10
+-------------------------------------------------------------------------------
+Thread A    [X]  [X]  [X]  [A]  [X]  [X]  [X]  [X]  [X]  [X]
+-------------------------------------------------------------------------------
+Donations
+
+
+-------------------------------------------------------------------------------
+Thread B    [X]  [X]  [X]  [X]  [X]  [B]  [B]  [B]  [X]  [X]
+-------------------------------------------------------------------------------
+Donations
+
+
+-------------------------------------------------------------------------------
+Thread C    [X]  [X]  [C]  [C]  [C]  [C]  [A]  [X]  [X]  [X]
+-------------------------------------------------------------------------------
+Donations        B                        A
+
+
+-------------------------------------------------------------------------------
+Thread D    [C]  [B]  [B]  [B]  [B]  [X]  [X]  [D]  [D]  [X]
+-------------------------------------------------------------------------------
+Donations   C    B,C  B    B    B
+
+
+-------------------------------------------------------------------------------
 
 ---- ALGORITHMS ----
 
 >> B3: How do you ensure that the highest priority thread waiting for
 >> a lock, semaphore, or condition variable wakes up first?
 
+We iterate through the waiting threads for each and wake up the one with the
+highest priority.
+
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 
+lock_acquire() is called.  It is seen that the holder has lower priority so
+the current thread donates its priority to the thread that holds the lock by
+adding its priority_elem to the priority_donations list and changing its
+priority.  It then keeps a pointer in the caller's lock_needed attribute.
+If this thread is also waiting on a lock, then its lock_needed variable will
+not be NULL, so this priority will trickle to the holder of that lock_needed,
+which will do the same check and so on until lock_needed is NULL.
+
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
+
+lock_release() is called.  If the lock holder has priority donations, then
+we iterate through them to see if any of those donations are from threads
+waiting on this lock.  If so, then we can unblock that thread.  Meanwhile, the
+holder's priority is set to orig_priority or the highest still-donated 
+priority.
 
 ---- SYNCHRONIZATION ----
 
 >> B6: Describe a potential race in thread_set_priority() and explain
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
+
+In set_priority, we could be making the priority less than the next highest
+donation that it has.  If we were to change the priority right away, this
+would cause the thread to ignore the priority donation.  We handle this by
+changing the orig_priority to the new_priority, and only changing the
+running priority if it has no donations or is higher than the current
+priority.
+
+This cannot use a lock because set_priority may be called in an interrupt
+handler, and interrupt handlers cannot obtain locks.
 
 ---- RATIONALE ----
 
