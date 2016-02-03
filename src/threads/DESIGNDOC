@@ -9,7 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Tim Menninger <tmenninger@caltech.edu>
-FirstName LastName <email@domain.example>
+Jerry Zhang <jerry.zhang@caltech.edu>
 FirstName LastName <email@domain.example>
 
 >> Specify how many late tokens you are using on this assignment: 0
@@ -18,7 +18,7 @@ FirstName LastName <email@domain.example>
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
+   Repository URL: /cs/courses/cs124/pintos-cit.git 
    commit ...
 
 ---- PRELIMINARIES ----
@@ -43,11 +43,14 @@ which parts.
    Make sure that each member's total time is listed.
    
    Tim 16 hours
+   Jerry 9 hours
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
    
    Tim - Priority donations
+   Jerry - Alarm and fixed-point library
+
 
 			     ALARM CLOCK
 			     ===========
@@ -57,27 +60,56 @@ which parts.
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+Added int64_t wake_time; to struct thread.
+This variable keeps track of the time that a sleeping thread will be 
+awoken. The thread is blocked until that time comes. If a thread is
+not sleeping, the value is -1.
+
+Added struct list sleeping_list to global variables.
+This list keeps track of which threads are currently asleep. It uses the
+same elem as ready_list so it needs no extra memory.
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
 
+Interrupts are disabled, the time the thread will wake is recorded in
+the thread struct, the thread adds itself to sleeping_list, 
+and the thread blocks. Every timer interrupt, sleeping threads
+are checked to see if that time has passed, and if so, the thread 
+is unblocked.
+
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+A list of sleeping threads is kept so only the sleeping threads
+have to be checked for waking, rather than all threads or all
+blocked threads. 
+The next step would be to binary search insert each
+thread into sleeping_list based on wake_time so the list is sorted
+, and have the loop stop as soon as it reaches a thread with a 
+higher wake_time than the cur_time. This way minimal time is wasted on 
+threads that aren't waking up. I didn't implement this because list.h
+didn't already include a binary insert.
+
+
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
+Threads only change their own state, not the state of other threads.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+Interrupts are turned off.
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+This was the first design we considered. 
+
 
 			 PRIORITY SCHEDULING
 			 ===================
@@ -270,6 +302,12 @@ ticks   A   B   C   A   B   C   to run
 >> abstraction layer for fixed-point math, that is, an abstract data
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
+
+We abstracted fixed point numbers as a typedef of int32_t and created
+a set of functions to manipulate the values. This allowed us to focus 
+on the problem rather than the details of how fixed point numbers work.
+An inline function or macro would have been slightly more efficient, 
+but the effect would not be very noticable.
 
 			  SURVEY QUESTIONS
 			  ================

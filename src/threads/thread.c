@@ -29,6 +29,8 @@ static struct list ready_list;
     when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+static struct list sleeping_list;
+
 /*! Idle thread. */
 static struct thread *idle_thread;
 
@@ -63,8 +65,9 @@ bool thread_mlfqs;
 fixed_point load_avg;
 fixed_point load_coefficient;
 
-void update_recent_cpu(struct thread* t);
+void update_recent_cpu(struct thread *t, void *UNUSED);
 void update_load_avg(void);
+void thread_update_mlfqs_priority(struct thread *t, void *UNUSED);
 /*** End BSD Scheduler variables ***/
 
 static void kernel_thread(thread_func *, void *aux);
@@ -78,7 +81,7 @@ static void *alloc_frame(struct thread *, size_t size);
 static void schedule(void);
 void thread_schedule_tail(struct thread *prev);
 static tid_t allocate_tid(void);
-void thread_wake(struct thread *, void* aux);
+void wake_sleeping_threads(int64_t cur_time);
 
 
 /*! Returns the list item in the argued list with the highest priority.
@@ -123,6 +126,7 @@ void thread_init(void) {
     lock_init(&tid_lock);
     list_init(&ready_list);
     list_init(&all_list);
+    list_init(&sleeping_list);
 
     if (thread_mlfqs) {
         load_avg = 0;
@@ -151,17 +155,32 @@ void thread_start(void) {
     sema_down(&idle_started);
 }
 
-void thread_wake(struct thread *t, void* aux) {
-    if (t->wake_time == -1) return;
+/** Wakes all sleeping threads that are ready */
+void wake_sleeping_threads(int64_t cur_time) {
+    ASSERT(intr_get_level() == INTR_OFF);
 
-    int64_t cur_time = *((int64_t*) aux);
-    if (cur_time >= t->wake_time) {
-        t->wake_time = -1;
-        thread_unblock(t);
+    struct list_elem *e = list_begin(&sleeping_list);
+    while (e != list_end(&sleeping_list)) {
+        struct thread *t = list_entry(e, struct thread, elem);
+        struct list_elem * prev = e;
+
+        // have to move e forward now in case it changes
+        e = list_next(e);                        
+
+        if (cur_time >= t->wake_time) {
+            t->wake_time = -1;
+            list_remove(prev);
+            thread_unblock(t);
+        }
     }
 }
 
-void thread_update_mlfqs_priority(struct thread *t) {
+/** Adds current thread to the list of sleeping threads. */
+void thread_sleep(void) {
+	list_push_back(&sleeping_list, &thread_current()->elem);
+}
+
+void thread_update_mlfqs_priority(struct thread *t, void *aux UNUSED) {
     if (t == idle_thread)
         return;
     int update = PRI_MAX - round_fp(t->recent_cpu / 4) - (t->nice * 2);
@@ -223,7 +242,7 @@ void thread_tick(void) {
 
     /* Wake any sleeping threads that are done. */
     int64_t curtime = timer_ticks();
-    thread_foreach(thread_wake, (void*) &curtime);
+    wake_sleeping_threads(curtime);
 }
 
 /*! Prints thread statistics. */
@@ -315,8 +334,6 @@ void thread_unblock(struct thread *t) {
     ASSERT(t->status == THREAD_BLOCKED);
 	list_push_back(&ready_list, &t->elem);
 
-    // TODO if we're running BSD scheduler, add thread to one of 64 queues based on priority
-
 	t->status = THREAD_READY;
     
     // Because the highest priority thread is running, this thread's priority
@@ -389,8 +406,6 @@ void thread_yield(void) {
 
     old_level = intr_disable();
     if (cur != idle_thread) {
-        // TODO if BSD scheduler, then push it onto a queue instead
-
         list_push_back(&ready_list, &cur->elem);
     }
     cur->status = THREAD_READY;
@@ -411,6 +426,7 @@ void thread_foreach(thread_action_func *func, void *aux) {
         func(t, aux);
     }
 }
+
 
 /*! Sets the current thread's priority to NEW_PRIORITY.  This is called to set
     its original priority.  If the change makes its original priority higher
@@ -489,7 +505,7 @@ int thread_get_priority(void) {
 void thread_set_nice(int nice) {
     struct thread *t = thread_current();
     t->nice = nice;
-    thread_update_mlfqs_priority(t);
+    thread_update_mlfqs_priority(t, NULL);
 
     if (!list_empty(&ready_list)) {
         int high_priority = list_entry(list_highest_priority(&ready_list), \
@@ -499,8 +515,6 @@ void thread_set_nice(int nice) {
             thread_yield();
 
     }
-    
-
 }
 
 /*! Returns the current thread's nice value. */
@@ -521,7 +535,7 @@ int thread_get_recent_cpu(void) {
 /**
  * Updates current thread recent cpu. Call for all threads exactly once a second.
  */
-void update_recent_cpu(struct thread* t) {
+void update_recent_cpu(struct thread *t, void *aux UNUSED) {
     fixed_point a = divide( 2 * load_avg, 2 * load_avg + to_fp(1) );
     t->recent_cpu = multiply(t->recent_cpu, a) + to_fp(t->nice);
 }

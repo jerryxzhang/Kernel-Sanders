@@ -87,6 +87,7 @@ void timer_sleep(int64_t ticks) {
     ASSERT(intr_get_level() == INTR_ON);
     old_level = intr_disable();
     
+    thread_sleep();
     thread_current()->wake_time = start + ticks;
     thread_block();
 
