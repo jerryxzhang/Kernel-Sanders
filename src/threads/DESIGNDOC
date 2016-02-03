@@ -98,17 +98,18 @@ didn't already include a binary insert.
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
-Threads only change their own state, not the state of other threads.
+Interrupts are turned off in timer_sleep()
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
-Interrupts are turned off.
+Interrupts are turned off
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
-This was the first design we considered. 
+This is superior to not having sleeping_list and just iterating through
+all_list since no time is wasted on threads that are not sleeping.
 
 
 			 PRIORITY SCHEDULING
