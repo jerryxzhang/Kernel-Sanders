@@ -224,15 +224,7 @@ void thread_tick(void) {
         if (ticks % 4 == 0){
             thread_foreach(thread_update_mlfqs_priority, NULL);
 
-            if (!list_empty(&ready_list)) {
-                int high_priority = list_entry(
-                    list_highest_priority(&ready_list),
-                    struct thread, elem)->priority;
-
-                if (high_priority > t->priority) 
-                    intr_yield_on_return();
-
-            }            
+            intr_yield_on_return();            
         }
     }
 
@@ -445,17 +437,7 @@ void thread_set_priority(int new_priority) {
 		thread_current()->priority = new_priority;
 	}
     
-    // Want to see if this change made it so that the thread is no longer of
-    //    highest priority.
-    int high_priority = -1;
-    if (!list_empty(&ready_list)) {
-		high_priority = list_entry(list_highest_priority(&ready_list), \
-						struct thread, elem)->priority;
-	}
-    
-    if (high_priority > new_priority) {
-		thread_yield();
-	}
+    thread_yield();
 }
 
 /*! Gives priority to a thread with lower priority. */
@@ -507,14 +489,7 @@ void thread_set_nice(int nice) {
     t->nice = nice;
     thread_update_mlfqs_priority(t, NULL);
 
-    if (!list_empty(&ready_list)) {
-        int high_priority = list_entry(list_highest_priority(&ready_list), \
-                        struct thread, elem)->priority;
-
-        if (high_priority > t->priority) 
-            thread_yield();
-
-    }
+    thread_yield();
 }
 
 /*! Returns the current thread's nice value. */

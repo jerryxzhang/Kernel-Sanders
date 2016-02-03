@@ -10,7 +10,7 @@
 
 Tim Menninger <tmenninger@caltech.edu>
 Jerry Zhang <jerry.zhang@caltech.edu>
-FirstName LastName <email@domain.example>
+Jack Wang <j.wang@caltech.edu>
 
 >> Specify how many late tokens you are using on this assignment: 0
 
@@ -44,12 +44,14 @@ which parts.
    
    Tim 16 hours
    Jerry 9 hours
+   Jack 8 hours
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
    
    Tim - Priority donations
    Jerry - Alarm and fixed-point library
+   Jack - Advanced scheduling
 
 
 			     ALARM CLOCK
@@ -262,6 +264,20 @@ handler, and interrupt handlers cannot obtain locks.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+In thread.c we added :
+	fixed_point load_avg;
+	fixed_point load_coefficient;
+
+These are to keep track of the load avg in the BSD scheduling update of recent
+cpu that happens every 4 ticks. load_coffecient = 2 * load_avg / (2 * load_avg
++ 1), just to not recalculate for every thread.
+
+
+In the thread struct defined in thread.h we add the fields:
+	int nice;
+	fixed_point recent_cpu;
+to keep track of the niceness and recent cpu use of each thread.
+
 ---- ALGORITHMS ----
 
 >> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
@@ -272,23 +288,36 @@ handler, and interrupt handlers cannot obtain locks.
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0		0	0	0	63	61	59		A
+ 4		4	0	0	62	61	59		A
+ 8		8	0	0	61	61	59		B
+12      8	4	0	61	60	59		A
+16		12	4	0	60	60	59		B
+20		12	8	0	60	59	59		A
+24		16	8	0	59	59	59		C
+28		16	8	4	59	59	58		B
+32		16	12	4	59	58	58		A
+36		20	12	4	58	58	58		C
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
 
+There's ambiguity when there are multiple threads of highest priority. In
+such a case, the specification only says to follow round robin order. This
+does not specify what that order is, only that all those threads will each get
+a turn to run. The order we chose for the round robin order is least recently
+run thread will run first in case of multiple competing threads. Our scheduler
+follows this ordering. 
+
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
+
+How much work gets done inside the interrupt affects how much a thread gets to
+run per tick. The more work the interrupt handler does, the less the thread
+gets to run. Thus, the thread takes more ticks to complete its task. 
+Thus, doing more work than what is necessary inside the interrupt handler
+negatively impacts performance.
 
 ---- RATIONALE ----
 
@@ -296,6 +325,16 @@ ticks   A   B   C   A   B   C   to run
 >> disadvantages in your design choices.  If you were to have extra
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
+
+Our design uses a single queue rather than one queue per priority level. This
+has the advantage of being much simpler to implement. In implementing it, we 
+used the existing priority scheduling and just updated the priority each every
+4 ticks instead of it being static. There is less logic and less to get wrong
+than the multi queue appraoch. However, this approach is also slower,
+especially when there are a lot of threads to schedule. Having multiple queues
+means that we wouldn't have to look through all the ready threads to find the 
+next thread to run, where as in the single queue case we do. If we were to 
+improve out desgin, we would implement the multiple queues.
 
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
