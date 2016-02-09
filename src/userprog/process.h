@@ -14,9 +14,6 @@ struct process {
     /** A pointer to the thread structure. Only valid if process is running. */
     struct thread *thread_ptr; 
 
-    /** Process name, as provived to exec() */
-    const char *name;
-
     /** Ids of this process and its parent. */
     pid_t pid;
     pid_t parent_pid; /** -1 if parent has died. */

@@ -257,7 +257,7 @@ void thread_print_stats(void) {
     The code provided sets the new thread's `priority' member to PRIORITY, but
     no actual priority scheduling is implemented.  Priority scheduling is the
     goal of Problem 1-3. */
-tid_t thread_create(const char *name, int priority, thread_func *function,
+struct thread *thread_create(const char *name, int priority, thread_func *function,
                     void *aux, pid_t pid) {
     struct thread *t;
     struct kernel_thread_frame *kf;
@@ -270,7 +270,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     /* Allocate thread. */
     t = palloc_get_page(PAL_ZERO);
     if (t == NULL)
-        return TID_ERROR;
+        return NULL;
 
     /* Initialize thread. */
     init_thread(t, name, priority);
@@ -295,7 +295,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     /* Add to run queue. */
     thread_unblock(t);
 
-    return tid;
+    return t;
 }
 
 /*! Puts the current thread to sleep.  It will not be scheduled

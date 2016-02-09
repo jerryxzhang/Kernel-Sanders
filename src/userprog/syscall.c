@@ -14,8 +14,7 @@ void syscall_init(void) {
 }
 
 static void syscall_handler(struct intr_frame *f) {
-    int syscall_num = f->eax;
-    printf("system call #%d!\n", syscall_num);
+    int syscall_num = getArg(0, f);;
     
     switch(syscall_num) {
         case SYS_HALT:
@@ -25,9 +24,10 @@ static void syscall_handler(struct intr_frame *f) {
             thread_exit((int) getArg(1, f));
             break;
         case SYS_EXEC:
+            f->eax = (uint32_t) process_execute((const char*) getArg(1, f));
             break;
         case SYS_WAIT:
-            f->eax = (int) process_wait((int) getArg(1, f));
+            f->eax = (uint32_t) process_wait((int) getArg(1, f));
             break;
         case SYS_CREATE:
             break;

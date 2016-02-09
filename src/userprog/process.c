@@ -44,6 +44,7 @@ void process_init(void) {
     // Give the init thread the first pid
     ASSERT(process_table_get() == INIT_PID);
     thread_current()->pid = INIT_PID;
+    process_table[INIT_PID].thread_ptr = thread_current();
 }
 
 /** 
@@ -63,7 +64,6 @@ pid_t process_table_get(void) {
     p->blocked = false;
     p->running = true;
     list_init(&p->children);
-    p->thread_ptr = thread_current();
 
     p->parent_pid = thread_current()->pid;
     return p->pid;
@@ -88,7 +88,6 @@ void process_table_free(struct process *p) {
     cannot be created. */
 pid_t process_execute(const char *file_name) {
     char *fn_copy;
-    tid_t tid;
     pid_t pid;
 
     /* Make a copy of FILE_NAME.
@@ -103,13 +102,10 @@ pid_t process_execute(const char *file_name) {
     if (pid == PID_ERROR) {
         return pid;
     }
-    process_table[pid].name = file_name;
-
-    printf("Process number #%d starting process %d.\n", thread_current()->pid, pid);
 
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
-    if (tid == TID_ERROR) {
+    process_table[pid].thread_ptr = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
+    if (process_table[pid].thread_ptr == NULL) {
         palloc_free_page(fn_copy); 
         process_table_free(&process_table[pid]);
         return PID_ERROR;
@@ -135,11 +131,9 @@ static void start_process(void *file_name_) {
 
     success = load(file_name, &if_.eip, &if_.esp);
     
+   /** *((int*)--if_.esp) = 0;
     *((int*)--if_.esp) = 0;
-    *((int*)--if_.esp) = 0;
-    *((int*)--if_.esp) = 0x1337;
-
-    printf("Should jump to %x\n", if_.eip);
+    *((int*)--if_.esp) = 0x1337;*/
 
     /* If load failed, quit. */
     palloc_free_page(file_name);
@@ -166,31 +160,30 @@ static void start_process(void *file_name_) {
     nothing. */
 int process_wait(pid_t child_id) {
     // Ensure that child_id is valid
-    if (child_id < 0 || child_id > MAX_PROCESSES - 1)
+    if (child_id < 0 || child_id > MAX_PROCESSES - 1 || !process_table[child_id].valid 
+            || process_table[child_id].parent_pid != thread_current()->pid) {
+        printf("(%s) wait(exec()) = %d\n", thread_current()->name, -1);
         return -1;
-    if (!process_table[child_id].valid)
-        return -1;
-    if (process_table[child_id].parent_pid != thread_current()->pid)
-        return -1;
-
+    }
+    
     int ret;
 
     if (process_table[child_id].running) {
         enum intr_level old_level = intr_disable();
-
         // Block until the child process exiting wakes it up
         process_table[child_id].blocked = true;
         thread_block();
 
         intr_set_level(old_level);
     }
-
     // The child process must be done at this point
     ASSERT(!process_table[child_id].running);
 
     ret = process_table[child_id].return_code;
 
     process_table_free(&process_table[child_id]);
+
+    printf("(%s) wait(exec()) = %d\n", thread_current()->name, ret);
     return ret;
 }
 
@@ -201,7 +194,7 @@ void kernel_exit(void) {
 
 /*! Free the current process's resources. */
 void process_exit(int code) {
-    printf("%s:exit(%d)\n", thread_current()->name, code);
+    printf("%s: exit(%d)\n", thread_current()->name, code);
 
     struct thread *cur = thread_current();
     struct process *p = &process_table[cur->pid];
@@ -213,7 +206,6 @@ void process_exit(int code) {
 
     // Unblock the parent if it is waiting
     if (p->blocked) {
-        ASSERT(is_thread(process_table[p->parent_pid].thread_ptr));
         p->blocked = false;
         thread_unblock(process_table[p->parent_pid].thread_ptr);
     }
@@ -555,7 +547,7 @@ static bool setup_stack(void **esp) {
     if (kpage != NULL) {
         success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
         if (success)
-            *esp = PHYS_BASE;
+            *esp = PHYS_BASE-12;
         else
             palloc_free_page(kpage);
     }
