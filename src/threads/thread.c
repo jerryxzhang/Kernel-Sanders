@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "userprog/process.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
@@ -76,7 +77,6 @@ static void idle(void *aux UNUSED);
 static struct thread *running_thread(void);
 static struct thread *next_thread_to_run(void);
 static void init_thread(struct thread *, const char *name, int priority);
-static bool is_thread(struct thread *) UNUSED;
 static void *alloc_frame(struct thread *, size_t size);
 static void schedule(void);
 void thread_schedule_tail(struct thread *prev);
@@ -146,7 +146,7 @@ void thread_start(void) {
     /* Create the idle thread. */
     struct semaphore idle_started;
     sema_init(&idle_started, 0);
-    thread_create("idle", PRI_MIN, idle, &idle_started);
+    thread_create("idle", PRI_MIN, idle, &idle_started, -1);
 
     /* Start preemptive thread scheduling. */
     intr_enable();
@@ -258,7 +258,7 @@ void thread_print_stats(void) {
     no actual priority scheduling is implemented.  Priority scheduling is the
     goal of Problem 1-3. */
 tid_t thread_create(const char *name, int priority, thread_func *function,
-                    void *aux) {
+                    void *aux, pid_t pid) {
     struct thread *t;
     struct kernel_thread_frame *kf;
     struct switch_entry_frame *ef;
@@ -274,6 +274,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
 
     /* Initialize thread. */
     init_thread(t, name, priority);
+    t->pid = pid;
     tid = t->tid = allocate_tid();
 
     /* Stack frame for kernel_thread(). */
@@ -372,11 +373,11 @@ tid_t thread_tid(void) {
 
 /*! Deschedules the current thread and destroys it.  Never
     returns to the caller. */
-void thread_exit(void) {
+void thread_exit(int code) {
     ASSERT(!intr_context());
 
 #ifdef USERPROG
-    process_exit();
+    process_exit(code);
 #endif
 
     /* Remove thread from all threads list, set our status to dying,
@@ -562,7 +563,7 @@ static void kernel_thread(thread_func *function, void *aux) {
 
     intr_enable();       /* The scheduler runs with interrupts off. */
     function(aux);       /* Execute the thread function. */
-    thread_exit();       /* If function() returns, kill the thread. */
+    thread_exit(-1);       /* If function() returns, kill the thread. */
 }
 
 /*! Returns the running thread. */
@@ -578,7 +579,7 @@ struct thread * running_thread(void) {
 }
 
 /*! Returns true if T appears to point to a valid thread. */
-static bool is_thread(struct thread *t) {
+bool is_thread(struct thread *t) {
     return t != NULL && t->magic == THREAD_MAGIC;
 }
 
@@ -599,6 +600,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->lock_needed = NULL;
     t->magic = THREAD_MAGIC;
     t->wake_time = -1;
+    t->pid = -1;
     list_init(&t->priority_donations);
 
     old_level = intr_disable();

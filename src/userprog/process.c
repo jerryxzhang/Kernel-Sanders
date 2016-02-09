@@ -18,16 +18,78 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+static struct process process_table[MAX_PROCESSES];
+static struct list free_list;
+
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
+pid_t process_table_get(void);
+void process_table_free(struct process *p);
+
+/** 
+ * Initialize the process table.
+ */
+void process_init(void) {
+    int i;
+    ASSERT(intr_get_level() == INTR_OFF);
+
+    list_init(&free_list);
+
+    for (i = MAX_PROCESSES-1; i >= 0; i--) {
+        process_table[i].pid = i;
+        process_table[i].valid = false;
+        list_push_back(&free_list, &process_table[i].elem);
+    }
+
+    // Give the init thread the first pid
+    ASSERT(process_table_get() == INIT_PID);
+    thread_current()->pid = INIT_PID;
+}
+
+/** 
+ * Allocate and intialize a element in the process table and return
+ * the process id.
+ */
+pid_t process_table_get(void) {
+    if (list_empty(&free_list)) {
+        return PID_ERROR;
+    }
+    struct list_elem *elem = list_pop_back(&free_list);
+    struct process *p = list_entry(elem, struct process, elem);
+    
+    ASSERT(!p->valid);
+
+    p->valid = true;
+    p->blocked = false;
+    p->running = true;
+    list_init(&p->children);
+    p->thread_ptr = thread_current();
+
+    p->parent_pid = thread_current()->pid;
+    return p->pid;
+}
+
+/**
+ * Free the given process table element and make its pid
+ * available again
+ */
+void process_table_free(struct process *p) {
+    ASSERT(p->valid);
+
+    p->valid = false;
+    list_remove(&p->elem);
+
+    list_push_back(&free_list, &p->elem);
+}
 
 /*! Starts a new thread running a user program loaded from FILENAME.  The new
     thread may be scheduled (and may even exit) before process_execute()
-    returns.  Returns the new process's thread id, or TID_ERROR if the thread
+    returns.  Returns the new process's process id, or PID_ERROR if the thread  
     cannot be created. */
-tid_t process_execute(const char *file_name) {
+pid_t process_execute(const char *file_name) {
     char *fn_copy;
     tid_t tid;
+    pid_t pid;
 
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
@@ -36,11 +98,27 @@ tid_t process_execute(const char *file_name) {
         return TID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
 
+    /** Allocate a process table entry. */
+    pid = process_table_get();
+    if (pid == PID_ERROR) {
+        return pid;
+    }
+    process_table[pid].name = file_name;
+
+    printf("Process number #%d starting process %d.\n", thread_current()->pid, pid);
+
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
-    if (tid == TID_ERROR)
+    tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
+    if (tid == TID_ERROR) {
         palloc_free_page(fn_copy); 
-    return tid;
+        process_table_free(&process_table[pid]);
+        return PID_ERROR;
+    }   
+
+    // Add new process to current children
+    list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);
+    
+    return pid;
 }
 
 /*! A thread function that loads a user process and starts it running. */
@@ -54,12 +132,19 @@ static void start_process(void *file_name_) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
+
     success = load(file_name, &if_.eip, &if_.esp);
+    
+    *((int*)--if_.esp) = 0;
+    *((int*)--if_.esp) = 0;
+    *((int*)--if_.esp) = 0x1337;
+
+    printf("Should jump to %x\n", if_.eip);
 
     /* If load failed, quit. */
     palloc_free_page(file_name);
     if (!success) 
-        thread_exit();
+        thread_exit(-1);  
 
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
@@ -79,14 +164,80 @@ static void start_process(void *file_name_) {
 
     This function will be implemented in problem 2-2.  For now, it does
     nothing. */
-int process_wait(tid_t child_tid UNUSED) {
-    return -1;
+int process_wait(pid_t child_id) {
+    // Ensure that child_id is valid
+    if (child_id < 0 || child_id > MAX_PROCESSES - 1)
+        return -1;
+    if (!process_table[child_id].valid)
+        return -1;
+    if (process_table[child_id].parent_pid != thread_current()->pid)
+        return -1;
+
+    int ret;
+
+    if (process_table[child_id].running) {
+        enum intr_level old_level = intr_disable();
+
+        // Block until the child process exiting wakes it up
+        process_table[child_id].blocked = true;
+        thread_block();
+
+        intr_set_level(old_level);
+    }
+
+    // The child process must be done at this point
+    ASSERT(!process_table[child_id].running);
+
+    ret = process_table[child_id].return_code;
+
+    process_table_free(&process_table[child_id]);
+    return ret;
+}
+
+/** Used by the kernel to kill a misbehaving process */
+void kernel_exit(void) {
+    process_exit(-1);
 }
 
 /*! Free the current process's resources. */
-void process_exit(void) {
+void process_exit(int code) {
+    printf("%s:exit(%d)\n", thread_current()->name, code);
+
     struct thread *cur = thread_current();
+    struct process *p = &process_table[cur->pid];
+
     uint32_t *pd;
+
+    p->return_code = code;
+    p->running = false;
+
+    // Unblock the parent if it is waiting
+    if (p->blocked) {
+        ASSERT(is_thread(process_table[p->parent_pid].thread_ptr));
+        p->blocked = false;
+        thread_unblock(process_table[p->parent_pid].thread_ptr);
+    }
+
+    // Deal with any remaining children
+    if (!list_empty(&p->children)) {
+        struct list_elem *e;
+        for (e = list_begin(&p->children); e != list_end(&p->children); 
+                e = list_next(e)) {
+            struct process *child = list_entry(e, struct process, elem);
+            if (child->running) {
+                // Inform the child the parent is dead
+                child->parent_pid = -1;
+            } else {
+                // The parent did not care about these children. 
+                process_table_free(child);
+            }
+        }
+    }
+
+    // Parent is dead, so noone will wait for this child
+    if (p->parent_pid == -1) {
+        process_table_free(p);
+    }
 
     /* Destroy the current process's page directory and switch back
        to the kernel-only page directory. */

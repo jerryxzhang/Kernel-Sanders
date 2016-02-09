@@ -29,6 +29,10 @@ bool thread_waiting;
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /*!< Error value for tid_t. */
 
+/** Process identifier type. */
+typedef int16_t pid_t;
+#define PID_ERROR ((pid_t) -1)
+
 /* Thread priorities. */
 #define PRI_MIN 0                       /*!< Lowest priority. */
 #define PRI_DEFAULT 31                  /*!< Default priority. */
@@ -98,6 +102,7 @@ struct thread {
     /*! Owned by thread.c. */
     /**@{*/
     tid_t tid;                          /*!< Thread identifier. */
+    pid_t pid;                          /*!< Process id, or -1 if not a proces. */
     enum thread_status status;          /*!< Thread state. */
     char name[16];                      /*!< Name (for debugging purposes). */
     uint8_t *stack;                     /*!< Saved stack pointer. */
@@ -149,7 +154,7 @@ void thread_print_stats(void);
 void thread_sleep(void);
 
 typedef void thread_func(void *aux);
-tid_t thread_create(const char *name, int priority, thread_func *, void *);
+tid_t thread_create(const char *name, int priority, thread_func *, void *, pid_t);
 
 void thread_block(void);
 void thread_unblock(struct thread *);
@@ -161,7 +166,7 @@ struct thread *thread_current (void);
 tid_t thread_tid(void);
 const char *thread_name(void);
 
-void thread_exit(void) NO_RETURN;
+void thread_exit(int code) NO_RETURN;
 void thread_yield(void);
 
 /*! Performs some operation on thread t, given auxiliary data AUX. */
@@ -176,6 +181,8 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+
+bool is_thread(struct thread*);
 
 /*! Returns the list_item of the highest priority thread in the list. */
 struct list_elem *list_highest_priority (struct list *in_list);

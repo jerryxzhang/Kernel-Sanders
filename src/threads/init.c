@@ -119,6 +119,7 @@ int main(void) {
 #ifdef USERPROG
     exception_init();
     syscall_init();
+    process_init();
 #endif
 
     /* Start thread scheduler and enable interrupts. */
@@ -140,7 +141,7 @@ int main(void) {
 
     /* Finish up. */
     shutdown();
-    thread_exit();
+    thread_exit(-1);
 }
 
 /*! Clear the "BSS", a segment that should be initialized to
