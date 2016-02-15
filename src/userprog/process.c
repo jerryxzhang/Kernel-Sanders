@@ -105,7 +105,7 @@ pid_t process_execute(const char *file_name) {
     }
 
     /* Create a new thread to execute FILE_NAME. */
-    process_table[pid].thread_ptr = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
+    process_table[pid].thread_ptr = thread_create(argv[0], PRI_DEFAULT, start_process, fn_copy, pid);
     if (process_table[pid].thread_ptr == NULL) {
         palloc_free_page(fn_copy); 
         process_table_free(&process_table[pid]);
@@ -114,9 +114,6 @@ pid_t process_execute(const char *file_name) {
 
     // Add new process to current children
     list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);
-
-    while (process_table[pid].thread_ptr->status == THREAD_BLOCKED)
-        thread_unblock(process_table[pid].thread_ptr);
     
     return pid;
 }
@@ -153,6 +150,7 @@ static void start_process(void *file_name_) {
     
     /* First argument is filename, at the beginning of the string. */
     argv[0] = temp_fn;
+    printf("hi\n\n\n\n\n");
     while (true) {
         /* Want to put a NULL character so our string "looks" like words. */
         *(saveptr - 1) = '\0';
@@ -221,8 +219,8 @@ static void start_process(void *file_name_) {
     if_.esp--;
     
     /* Put the filename and argument strings on the stack. */
-    memcpy((void *) (if_.esp - num_chars - 1), (void *) file_name, \
-                num_chars * sizeof(char));
+    memcpy((void *) (if_.esp - (num_chars * sizeof(char)) - 1), \
+                (void *) file_name, num_chars * sizeof(char));
     /* Change the stack pointer to show this addition. */
     if_.esp = (void *) ((int) if_.esp - num_chars - 1);
     /* Update values in argv to point in stack. */
@@ -235,10 +233,6 @@ static void start_process(void *file_name_) {
     
     /* Put the pointers and arguments on the stack. */
     stack_put_args(&if_.esp, argv, argc, NULL);
-
-    intr_disable();
-    thread_block();
-    intr_enable();
     
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
