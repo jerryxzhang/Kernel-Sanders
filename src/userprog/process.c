@@ -105,7 +105,7 @@ pid_t process_execute(const char *file_name) {
     }
 
     /* Create a new thread to execute FILE_NAME. */
-    process_table[pid].thread_ptr = thread_create(argv[0], PRI_DEFAULT, start_process, fn_copy, pid);
+    process_table[pid].thread_ptr = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
     if (process_table[pid].thread_ptr == NULL) {
         palloc_free_page(fn_copy); 
         process_table_free(&process_table[pid]);
@@ -233,7 +233,7 @@ static void start_process(void *file_name_) {
     
     /* Put the pointers and arguments on the stack. */
     stack_put_args(&if_.esp, argv, argc, NULL);
-    
+    hex_dump(0, if_.esp, 30, true);
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
        threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -247,6 +247,9 @@ static void start_process(void *file_name_) {
 /*! Puts on the stack the return address, argc, argv pointer and all
  *  of the pointersin the argv array.  This updates the stack pointer. */
 void stack_put_args(void **esp, char **argv, int argc, void *ret) {
+    /* Word align. */
+    *(int *) esp += (((int) *esp) % 4) - 1;
+    
     /* Want '\0' sentinel. */
     *esp -= sizeof(char *);
     *esp = NULL;
