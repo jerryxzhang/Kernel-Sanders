@@ -25,6 +25,7 @@ static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 pid_t process_table_get(void);
 void process_table_free(struct process *p);
+void stack_put_args(void **esp, char **argv, int argc, void *ret);
 
 /** 
  * Initialize the process table.
@@ -122,14 +123,54 @@ static void start_process(void *file_name_) {
     char *file_name = file_name_;
     struct intr_frame if_;
     bool success;
-
+    
     /* Initialize interrupt frame and load executable. */
     memset(&if_, 0, sizeof(if_));
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-
-    success = load(file_name, &if_.eip, &if_.esp);
+    
+    /* Create our array of pointers to arguments. */
+    char *saveptr, *token, temp_fn[PGSIZE], *argv[PGSIZE], *next = file_name;
+    int argc = 1, num_chars = 1;
+    
+    /* Count number of characters before we insert NULL characters so it
+     * is easier on us. */
+    while (*next != '\0') {
+        num_chars++;
+        next++;
+    }
+    
+    /* strtok_r may or may not alter argument, according to documentation,
+     * so feed it a copy. */
+    memcpy(temp_fn, file_name, PGSIZE);
+    
+    /* Run first iteration outside loop to initialize saveptr. */
+    token = strtok_r(temp_fn, " ", &saveptr);
+    
+    /* First argument is filename, at the beginning of the string. */
+    argv[0] = temp_fn;
+    while (true) {
+        /* Want to put a NULL character so our string "looks" like words. */
+        *(saveptr - 1) = '\0';
+        
+        /* Skip over spaces if there are multiple spaces. */
+        while (*saveptr == ' ')
+            saveptr++;
+        if (*saveptr == '\0')
+            break;
+        
+        /* saveptr now has the address of the next argument. */
+        argv[argc] = saveptr;
+        argc++;
+        
+        /* Find the end of the string argument. */
+        token = strtok_r(NULL, " ", &saveptr);
+        if (token == NULL)
+            break;
+    }
+        
+    success = load(argv[0], &if_.eip, &if_.esp);
     
    /** *((int*)--if_.esp) = 0;
     *((int*)--if_.esp) = 0;
@@ -138,7 +179,56 @@ static void start_process(void *file_name_) {
     /* If load failed, quit. */
     palloc_free_page(file_name);
     if (!success) 
-        thread_exit(-1);  
+        thread_exit(-1);
+       
+    /* Put the arguments on the stack that was loaded.  The structure of
+     * the arguments on the stack will look like:
+     *           _____________
+     *          |             |
+     *          |   kernel    |
+     *          |-------------|
+     *          |    argv[n]  |
+     *          |-------------|
+     *          |     ...     |
+     *          |-------------|
+     *          |    argv[1]  |
+     *          |-------------|
+     *          |    argv[0]  |
+     *          |-------------|
+     *          |     '\0'    |
+     *          |-------------|
+     *          |   &argv[n]  |
+     *          |-------------|
+     *          |     ...     |
+     *          |-------------|
+     *          |   &argv[1]  |
+     *          |-------------|
+     *          |   &argv[0]  |
+     *          |-------------|
+     *          |    &argv    |
+     *          |-------------|
+     *          |     argc    |
+     *          |-------------|
+     *    esp-->| return addr |
+     *          |-------------|
+     *          |             |
+     *          |             |
+     */
+    /* Put the filename and argument strings on the stack. */
+    memcpy((void *) (if_.esp - num_chars - 1), (void *) file_name, \
+                num_chars * sizeof(char));
+    /* Change the stack pointer to show this addition. */
+    if_.esp = (void *) ((int) if_.esp - num_chars - 1);
+    /* Update values in argv to point in stack. */
+    int i = 1;
+    while (i < argc) {
+        argv[i] = argv[i] - argv[0] + (char *) if_.esp;
+        i++;
+    }
+    argv[0] = (char *) if_.esp;
+    
+    /* Put the pointers and arguments on the stack. */
+    stack_put_args(&if_.esp, argv, argc, NULL);
 
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
@@ -148,6 +238,35 @@ static void start_process(void *file_name_) {
        and jump to it. */
     asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
     NOT_REACHED();
+}
+
+/*! Puts on the stack the return address, argc, argv pointer and all
+ *  of the pointersin the argv array.  This updates the stack pointer. */
+void stack_put_args(void **esp, char **argv, int argc, void *ret) {
+    /* Want '\0' sentinel. */
+    *esp -= sizeof(char *);
+    *esp = NULL;
+    
+    /* Move the stack pointer to the beginning of where argv will be. */
+    *esp -= argc * sizeof(char *);
+    /* Put the argument pointers in the stack with filename closest to
+     * the top. */
+    memcpy(*esp, (void *) argv, argc * sizeof(void *));
+    
+    /* Move stack pointer to put pointer to argv on the stack. */
+    *esp -= sizeof(char **);
+    /* Put pointer to argv on the stack (points within stack). */
+    **(char ****) esp = argv;
+    
+    /* Move stack pointer to where argc goes on the stack. */
+    *esp -= sizeof(int *);
+    /* Put agrc on the stack. */
+    **(int **) esp = argc;
+    
+    /* Move stack pointer to where return address goes on stack. */
+    *esp -= sizeof(void *);
+    /* Put return address on stack. */
+    **(void ***) esp = ret;
 }
 
 /*! Waits for thread TID to die and returns its exit status.  If it was
@@ -547,7 +666,7 @@ static bool setup_stack(void **esp) {
     if (kpage != NULL) {
         success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
         if (success)
-            *esp = PHYS_BASE-12;
+            *esp = PHYS_BASE - 1;
         else
             palloc_free_page(kpage);
     }
