@@ -114,6 +114,9 @@ pid_t process_execute(const char *file_name) {
 
     // Add new process to current children
     list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);
+
+    while (process_table[pid].thread_ptr->status == THREAD_BLOCKED)
+        thread_unblock(process_table[pid].thread_ptr);
     
     return pid;
 }
@@ -214,6 +217,9 @@ static void start_process(void *file_name_) {
      *          |             |
      *          |             |
      */
+    /* Decrement stack pointer so we start writing in the correct memory. */
+    if_.esp--;
+    
     /* Put the filename and argument strings on the stack. */
     memcpy((void *) (if_.esp - num_chars - 1), (void *) file_name, \
                 num_chars * sizeof(char));
@@ -230,6 +236,10 @@ static void start_process(void *file_name_) {
     /* Put the pointers and arguments on the stack. */
     stack_put_args(&if_.esp, argv, argc, NULL);
 
+    intr_disable();
+    thread_block();
+    intr_enable();
+    
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
        threads/intr-stubs.S).  Because intr_exit takes all of its
