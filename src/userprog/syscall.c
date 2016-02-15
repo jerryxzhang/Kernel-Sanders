@@ -9,9 +9,16 @@
 static void syscall_handler(struct intr_frame *);
 int getArg(int argnum, struct intr_frame *f);
 
+static bool r_valid(const uint8_t *uaddr);
+static bool w_valid(const uint8_t *uaddr);
+static bool rw_valid(const uint8_t *uaddr);
+
+
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
+
+
 
 static void syscall_handler(struct intr_frame *f) {
     int syscall_num = getArg(0, f);;
