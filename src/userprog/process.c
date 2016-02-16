@@ -90,6 +90,7 @@ void process_table_free(struct process *p) {
 pid_t process_execute(const char *file_name) {
     char *fn_copy;
     pid_t pid;
+    
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = palloc_get_page(0);
@@ -133,50 +134,41 @@ static void start_process(void *file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
     
     /* Create our array of pointers to arguments. */
-    char *saveptr, *token, temp_fn[PGSIZE], *argv[PGSIZE], *next = file_name;
-    int argc = 1, num_chars = 1;
+    char *argv[100], *next;
+    int argc = 0, num_chars = 0;
     
-    /* Count number of characters before we insert NULL characters so it
-     * is easier on us. */
-    while (*next != '\0') {
+    /* Iterate over string.  While doing this, count how long it is, and keep
+     * track of the offset of the first character of each token. */
+    
+    /* Start with next at the very beginning, and the zero-offset of the file
+     * name in the first entry of the argv array. */
+    next = file_name;
+    /* Keep track of the state of our parsing. */
+    bool in_word = false;
+    while (*next != '\0' && num_chars < PGSIZE) {
+        if (!in_word && *next != ' ') { // Found beginning of word
+            in_word = true; // Now we are iterating in a word
+            argv[argc] = (char *) num_chars; // num_chars is the offset
+            argc++;
+        }
+        else if (in_word && *next == ' ') { // Found end of word
+            in_word = false;
+            *next = '\0'; // Make NULL so it "looks" like a string.
+        }
+        // Otherwise, there is nothing special about the character
+        
         num_chars++;
         next++;
     }
     
-    /* strtok_r may or may not alter argument, according to documentation,
-     * so feed it a copy. */
-    memcpy(temp_fn, file_name, PGSIZE);
+    /* Stopped iterating before counting for the NULL terminator. */
+    num_chars++;
     
-    /* Run first iteration outside loop to initialize saveptr. */
-    token = strtok_r(temp_fn, " ", &saveptr);
-    
-    /* First argument is filename, at the beginning of the string. */
-    argv[0] = temp_fn;
-    while (true) {
-        /* Want to put a NULL character so our string "looks" like words. */
-        *(saveptr - 1) = '\0';
+    /* Want last argv pointer to be a NULL pointer, so put it in the array. */
+    argv[argc] = NULL;
         
-        /* Skip over spaces if there are multiple spaces. */
-        while (*saveptr == ' ')
-            saveptr++;
-        if (*saveptr == '\0')
-            break;
-        
-        /* saveptr now has the address of the next argument. */
-        argv[argc] = saveptr;
-        argc++;
-        
-        /* Find the end of the string argument. */
-        token = strtok_r(NULL, " ", &saveptr);
-        if (token == NULL)
-            break;
-    }
-        
-    success = load(argv[0], &if_.eip, &if_.esp);
-    
-   /** *((int*)--if_.esp) = 0;
-    *((int*)--if_.esp) = 0;
-    *((int*)--if_.esp) = 0x1337;*/
+    /* file_name now has a NULL character after file name. */
+    success = load(file_name, &if_.eip, &if_.esp);
 
     /* If load failed, quit. */
     palloc_free_page(file_name);
@@ -219,22 +211,46 @@ static void start_process(void *file_name_) {
     /* Decrement stack pointer so we start writing in the correct memory. */
     if_.esp--;
     
-    /* Put the filename and argument strings on the stack. */
-    memcpy((void *) (if_.esp - (num_chars * sizeof(char)) - 1), \
-                (void *) file_name, num_chars * sizeof(char));
-    /* Change the stack pointer to show this addition. */
-    if_.esp = (void *) ((int) if_.esp - num_chars - 1);
-    /* Update values in argv to point in stack. */
-    int i = 1;
-    while (i < argc) {
-        argv[i] = argv[i] - argv[0] + (char *) if_.esp;
-        i++;
-    }
-    argv[0] = (char *) if_.esp;
+    /* Move the stack pointer to where the beginning of the string should
+     * be */
+    if_.esp = (void *) (((int) if_.esp) - (num_chars * sizeof(char)));
     
-    /* Put the pointers and arguments on the stack. */
-    stack_put_args(&if_.esp, argv, argc, NULL);
-    hex_dump(0, if_.esp, 30, true);
+    /* Put the filename and argument strings on the stack. */
+    memcpy(if_.esp, (void *) file_name, num_chars * sizeof(char));
+    hex_dump((uintptr_t) if_.esp - 100, if_.esp, 100, true);
+    /* Make sure the last character is a NULL character, which it currently
+     * may not be if the string is of maximum length. */
+    *(((char *) if_.esp) + num_chars) = '\0';
+                
+    /* Update values in argv to point in stack. */
+    int i = 0;
+    for (i = 0; i < argc; i++)
+        argv[i] = (char *)((int) if_.esp + (int) argv[i]);
+    
+    /* Move the stack pointer down to the nearest multiple of 4 address. */
+    if_.esp = (void *) ((int) if_.esp & 0xFFFFFFFC);
+    
+    /* Iterate and put each pointer on the stack. */
+    for (i = argc; i >= 0; i--) {
+        if_.esp -= 4;
+        *(char **)(if_.esp) = argv[i];
+    }
+    
+    /* Move stack pointer to put pointer to argv on the stack. */
+    if_.esp -= 4;
+    /* Put pointer to argv on the stack (points within stack). */
+    *(void **) if_.esp = if_.esp + 4;
+    
+    /* Move stack pointer to where argc goes on the stack. */
+    if_.esp -= 4;
+    /* Put agrc on the stack. */
+    *(int *) if_.esp = argc;
+    
+    /* Move stack pointer to where return address goes on stack. */
+    if_.esp -= 4;
+    /* Put return address on stack. */
+    *(void **) if_.esp = NULL;
+    
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
        threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -243,38 +259,6 @@ static void start_process(void *file_name_) {
        and jump to it. */
     asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
     NOT_REACHED();
-}
-
-/*! Puts on the stack the return address, argc, argv pointer and all
- *  of the pointersin the argv array.  This updates the stack pointer. */
-void stack_put_args(void **esp, char **argv, int argc, void *ret) {
-    /* Word align. */
-    *(int *) esp += (((int) *esp) % 4) - 1;
-    
-    /* Want '\0' sentinel. */
-    *esp -= sizeof(char *);
-    *esp = NULL;
-    
-    /* Move the stack pointer to the beginning of where argv will be. */
-    *esp -= argc * sizeof(char *);
-    /* Put the argument pointers in the stack with filename closest to
-     * the top. */
-    memcpy(*esp, (void *) argv, argc * sizeof(void *));
-    
-    /* Move stack pointer to put pointer to argv on the stack. */
-    *esp -= sizeof(char **);
-    /* Put pointer to argv on the stack (points within stack). */
-    **(char ****) esp = argv;
-    
-    /* Move stack pointer to where argc goes on the stack. */
-    *esp -= sizeof(int *);
-    /* Put agrc on the stack. */
-    **(int **) esp = argc;
-    
-    /* Move stack pointer to where return address goes on stack. */
-    *esp -= sizeof(void *);
-    /* Put return address on stack. */
-    **(void ***) esp = ret;
 }
 
 /*! Waits for thread TID to die and returns its exit status.  If it was
