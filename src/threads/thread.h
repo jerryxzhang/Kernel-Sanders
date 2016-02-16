@@ -154,7 +154,8 @@ void thread_print_stats(void);
 void thread_sleep(void);
 
 typedef void thread_func(void *aux);
-struct thread *thread_create(const char *name, int priority, thread_func *, void *, pid_t);
+tid_t thread_create(const char *name, int priority, thread_func *, void *);
+struct thread *thread_create_ptr(const char *name, int priority, thread_func *, void *, pid_t);
 
 void thread_block(void);
 void thread_unblock(struct thread *);

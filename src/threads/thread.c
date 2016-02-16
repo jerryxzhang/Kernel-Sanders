@@ -146,7 +146,7 @@ void thread_start(void) {
     /* Create the idle thread. */
     struct semaphore idle_started;
     sema_init(&idle_started, 0);
-    thread_create("idle", PRI_MIN, idle, &idle_started, -1);
+    thread_create_ptr("idle", PRI_MIN, idle, &idle_started, -1);
 
     /* Start preemptive thread scheduling. */
     intr_enable();
@@ -257,13 +257,12 @@ void thread_print_stats(void) {
     The code provided sets the new thread's `priority' member to PRIORITY, but
     no actual priority scheduling is implemented.  Priority scheduling is the
     goal of Problem 1-3. */
-struct thread *thread_create(const char *name, int priority, thread_func *function,
+struct thread *thread_create_ptr(const char *name, int priority, thread_func *function,
                     void *aux, pid_t pid) {
     struct thread *t;
     struct kernel_thread_frame *kf;
     struct switch_entry_frame *ef;
     struct switch_threads_frame *sf;
-    tid_t tid;
 
     ASSERT(function != NULL);
 
@@ -275,7 +274,7 @@ struct thread *thread_create(const char *name, int priority, thread_func *functi
     /* Initialize thread. */
     init_thread(t, name, priority);
     t->pid = pid;
-    tid = t->tid = allocate_tid();
+    t->tid = allocate_tid();
 
     /* Stack frame for kernel_thread(). */
     kf = alloc_frame(t, sizeof *kf);
@@ -296,6 +295,13 @@ struct thread *thread_create(const char *name, int priority, thread_func *functi
     thread_unblock(t);
 
     return t;
+}
+
+/*! Creates a thread with default pid -1. */
+tid_t thread_create(const char *name, int priority, thread_func *function,
+                    void *aux) {
+	struct thread *t = thread_create_ptr(name, priority, function, aux, -1);
+	return t ? t->tid : TID_ERROR;
 }
 
 /*! Puts the current thread to sleep.  It will not be scheduled
