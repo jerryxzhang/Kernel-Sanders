@@ -43,8 +43,9 @@ void process_init(void) {
     }
 
     // Give the init thread the first pid
-    ASSERT(process_table_get() == INIT_PID);
-    thread_current()->pid = INIT_PID;
+    pid_t pid = process_table_get();
+    ASSERT(pid == INIT_PID);
+    thread_current()->pid = pid;
     process_table[INIT_PID].thread_ptr = thread_current();
 }
 
@@ -217,7 +218,6 @@ static void start_process(void *file_name_) {
     
     /* Put the filename and argument strings on the stack. */
     memcpy(if_.esp, (void *) file_name, num_chars * sizeof(char));
-    hex_dump((uintptr_t) if_.esp - 100, if_.esp, 100, true);
     /* Make sure the last character is a NULL character, which it currently
      * may not be if the string is of maximum length. */
     *(((char *) if_.esp) + num_chars) = '\0';
@@ -271,8 +271,9 @@ static void start_process(void *file_name_) {
     nothing. */
 int process_wait(pid_t child_id) {
     // Ensure that child_id is valid
-    if (child_id < 0 || child_id > MAX_PROCESSES - 1 || !process_table[child_id].valid 
-            || process_table[child_id].parent_pid != thread_current()->pid) {
+    if (child_id < 0 || child_id > MAX_PROCESSES - 1)
+        return -1;
+    if (!process_table[child_id].valid || process_table[child_id].parent_pid != thread_current()->pid) {
         printf("(%s) wait(exec()) = %d\n", thread_current()->name, -1);
         return -1;
     }
@@ -294,7 +295,8 @@ int process_wait(pid_t child_id) {
 
     process_table_free(&process_table[child_id]);
 
-    printf("(%s) wait(exec()) = %d\n", thread_current()->name, ret);
+    if (thread_current()->pid != 0)
+        printf("(%s) wait(exec()) = %d\n", thread_current()->name, ret);
     return ret;
 }
 
