@@ -90,12 +90,11 @@ void process_table_free(struct process *p) {
 pid_t process_execute(const char *file_name) {
     char *fn_copy;
     pid_t pid;
-
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = palloc_get_page(0);
     if (fn_copy == NULL)
-        return TID_ERROR;
+        return PID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
 
     /** Allocate a process table entry. */
@@ -105,16 +104,19 @@ pid_t process_execute(const char *file_name) {
     }
 
     /* Create a new thread to execute FILE_NAME. */
-    process_table[pid].thread_ptr = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
+    process_table[pid].thread_ptr = thread_create_ptr(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
     if (process_table[pid].thread_ptr == NULL) {
         palloc_free_page(fn_copy); 
         process_table_free(&process_table[pid]);
         return PID_ERROR;
-    }   
+    }
 
     // Add new process to current children
-    list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);
-    
+    list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);    
+
+    while (process_table[pid].thread_ptr->status == THREAD_BLOCKED)
+        thread_unblock(process_table[pid].thread_ptr);
+
     return pid;
 }
 
@@ -150,7 +152,6 @@ static void start_process(void *file_name_) {
     
     /* First argument is filename, at the beginning of the string. */
     argv[0] = temp_fn;
-    printf("hi\n\n\n\n\n");
     while (true) {
         /* Want to put a NULL character so our string "looks" like words. */
         *(saveptr - 1) = '\0';
