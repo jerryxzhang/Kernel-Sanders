@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #define MAX_PROCESSES 1024
+#define MAX_NAME_LEN 260
 #define INIT_PID 0
 
 /** A single element in the system process table. */
@@ -13,6 +14,9 @@ struct process {
 
     /** A pointer to the thread structure. Only valid if process is running. */
     struct thread *thread_ptr; 
+
+    /** A buffer storing the process name. **/
+    char name[MAX_NAME_LEN + 1];
 
     /** Ids of this process and its parent. */
     pid_t pid;
