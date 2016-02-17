@@ -146,8 +146,7 @@ static void page_fault(struct intr_frame *f) {
       kill(f);
     } 
     else {
-      f->eip = f->eax;
-      f->eax = -1;
+      kill(f);
     }
 }
 

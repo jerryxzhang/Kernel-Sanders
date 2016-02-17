@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "devices/shutdown.h"
+#include "filesys/filesys.h"
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
@@ -15,11 +17,14 @@ int getArg(int argnum, struct intr_frame *f);
    reading (r), writing(w).
  */
 static bool r_valid(const uint8_t *uaddr);
-static bool w_valid(const uint8_t *uaddr);
+static bool w_valid(uint8_t *uaddr);
 
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
+
+
+static struct lock filesys_lock;
 
 
 
@@ -34,14 +39,30 @@ static void syscall_handler(struct intr_frame *f) {
             thread_exit((int) getArg(1, f));
             break;
         case SYS_EXEC:
-            f->eax = (uint32_t) process_execute((const char*) getArg(1, f));
+            lock_acquire(&filesys_lock);
+            const char *cmd_line = (const char*) getArg(1, f);
+            if (r_valid((const uint8_t *)cmd_line))
+                f->eax = (uint32_t) process_execute(cmd_line);
+            else
+                f->eax = -1;
+            lock_release(&filesys_lock);
             break;
         case SYS_WAIT:
             f->eax = (uint32_t) process_wait((int) getArg(1, f));
             break;
         case SYS_CREATE:
+            lock_acquire(&filesys_lock);
+            const char *file = (const char*) getArg(1, f);
+            if (r_valid((const uint8_t *)file))
+                f->eax = filesys_create(file, (off_t) getArg(2, f));
+            else
+                f->eax = 0;
+            lock_release(&filesys_lock);
             break;
         case SYS_REMOVE:
+            lock_acquire(&filesys_lock);
+            f->eax = filesys_create((const char*) getArg(1, f), (off_t) getArg(2, f));
+            lock_release(&filesys_lock);
             break;
         case SYS_OPEN:
             break;
@@ -94,11 +115,11 @@ static bool r_valid(const uint8_t *uaddr) {
     return is_user_vaddr(uaddr) && get_user(uaddr) != -1;
 }
 
-static bool w_valid(const uint8_t *uaddr) {
+static bool w_valid(uint8_t *uaddr) {
     if (is_kernel_vaddr(uaddr))
         return false;
-    uint8_t byte = get_user(uaddr);
+    int byte = get_user(uaddr);
     if (byte == -1)
         return false;
-    return put_user(uaddr, byte);
+    return put_user(uaddr, (uint8_t)byte);
 }
