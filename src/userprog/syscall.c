@@ -41,33 +41,40 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_EXIT:
             thread_exit((int) getArg(1, f));
             break;
-        case SYS_EXEC:
+        case SYS_EXEC: {
             lock_acquire(&filesys_lock);
             const char *cmd_line = (const char*) getArg(1, f);
-            if (r_valid((const uint8_t *)cmd_line))
+            if (r_valid((uint8_t *)cmd_line))
                 f->eax = (uint32_t) process_execute(cmd_line);
             else
                 f->eax = -1;
             lock_release(&filesys_lock);
             break;
+        }
         case SYS_WAIT:
             f->eax = (uint32_t) process_wait((int) getArg(1, f));
             break;
-        case SYS_CREATE:
+        case SYS_CREATE: {
             lock_acquire(&filesys_lock);
             const char *file = (const char*) getArg(1, f);
-            if (r_valid((const uint8_t *)file))
+            if (r_valid((uint8_t *)file))
                 f->eax = filesys_create(file, (off_t) getArg(2, f));
             else
                 f->eax = 0;
             lock_release(&filesys_lock);
             break;
-        case SYS_REMOVE:
+        }
+        case SYS_REMOVE: {
             lock_acquire(&filesys_lock);
-            f->eax = filesys_create((const char*) getArg(1, f), (off_t) getArg(2, f));
+            const char *file = (const char*) getArg(1, f);
+            if (r_valid((uint8_t *)file))
+                f->eax = filesys_remove(file);
+            else
+                f->eax = 0;
             lock_release(&filesys_lock);
             break;
-        case SYS_OPEN:
+        }
+        case SYS_OPEN: 
             break;
         case SYS_FILESIZE:
             break;
