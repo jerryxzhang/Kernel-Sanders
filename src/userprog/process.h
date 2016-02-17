@@ -7,6 +7,7 @@
 
 #define MAX_PROCESSES 1024
 #define MAX_NAME_LEN 260
+#define MAX_ARGS 100
 #define INIT_PID 0
 
 /** A single element in the system process table. */
