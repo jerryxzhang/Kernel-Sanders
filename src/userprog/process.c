@@ -106,7 +106,7 @@ pid_t process_execute(const char *file_name) {
     }
 
     /* Create a new thread to execute FILE_NAME. */
-    process_table[pid].thread_ptr = thread_create_ptr(file_name, PRI_DEFAULT, start_process, fn_copy, pid);
+    process_table[pid].thread_ptr = thread_create_ptr(fn_copy, PRI_DEFAULT, start_process, fn_copy, pid);
     if (process_table[pid].thread_ptr == NULL) {
         palloc_free_page(fn_copy); 
         process_table_free(&process_table[pid]);
@@ -167,15 +167,11 @@ static void start_process(void *file_name_) {
     
     /* Want last argv pointer to be a NULL pointer, so put it in the array. */
     argv[argc] = NULL;
-        
+
     /* file_name now has a NULL character after file name. */
     success = load(file_name, &if_.eip, &if_.esp);
+    strlcpy(process_table[thread_current()->pid].name, file_name, MAX_NAME_LEN);
 
-    /* If load failed, quit. */
-    palloc_free_page(file_name);
-    if (!success) 
-        thread_exit(-1);
-       
     /* Put the arguments on the stack that was loaded.  The structure of
      * the arguments on the stack will look like:
      *           _____________
@@ -221,6 +217,11 @@ static void start_process(void *file_name_) {
     /* Make sure the last character is a NULL character, which it currently
      * may not be if the string is of maximum length. */
     *(((char *) if_.esp) + num_chars) = '\0';
+    
+    /* If load failed, quit. */
+    palloc_free_page(file_name);
+    if (!success) 
+        thread_exit(-1);
                 
     /* Update values in argv to point in stack. */
     int i = 0;
@@ -271,10 +272,8 @@ static void start_process(void *file_name_) {
     nothing. */
 int process_wait(pid_t child_id) {
     // Ensure that child_id is valid
-    if (child_id < 0 || child_id > MAX_PROCESSES - 1)
-        return -1;
-    if (!process_table[child_id].valid || process_table[child_id].parent_pid != thread_current()->pid) {
-        printf("(%s) wait(exec()) = %d\n", thread_current()->name, -1);
+    if (child_id < 0 || child_id > MAX_PROCESSES - 1 || !process_table[child_id].valid 
+            || process_table[child_id].parent_pid != thread_current()->pid) {
         return -1;
     }
     
@@ -295,8 +294,6 @@ int process_wait(pid_t child_id) {
 
     process_table_free(&process_table[child_id]);
 
-    if (thread_current()->pid != 0)
-        printf("(%s) wait(exec()) = %d\n", thread_current()->name, ret);
     return ret;
 }
 
@@ -307,7 +304,7 @@ void kernel_exit(void) {
 
 /*! Free the current process's resources. */
 void process_exit(int code) {
-    printf("%s: exit(%d)\n", thread_current()->name, code);
+    printf("%s: exit(%d)\n", process_table[thread_current()->pid].name, code);
 
     struct thread *cur = thread_current();
     struct process *p = &process_table[cur->pid];
@@ -466,6 +463,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
         printf("load: %s: open failed\n", file_name);
         goto done; 
     }
+    file_deny_write(file);
 
     /* Read and verify executable header. */
     if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
@@ -546,7 +544,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
 done:
     /* We arrive here whether the load is successful or not. */
-    file_close(file);
+    if (!success) file_close(file);
     return success;
 }
 

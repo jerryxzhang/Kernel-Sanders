@@ -14,8 +14,8 @@ int getArg(int argnum, struct intr_frame *f);
    Functions to check whether the given user memory address is valid for 
    reading (r), writing(w).
  */
-static bool r_valid(const uint8_t *uaddr);
-static bool w_valid(const uint8_t *uaddr);
+static bool r_valid(uint8_t *uaddr);
+static bool w_valid(uint8_t *uaddr);
 
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
@@ -24,7 +24,9 @@ void syscall_init(void) {
 
 
 static void syscall_handler(struct intr_frame *f) {
-    int syscall_num = getArg(0, f);;
+    if (!r_valid(f->esp) || !w_valid(f->esp)) thread_exit(-1);
+
+    int syscall_num = getArg(0, f);
     
     switch(syscall_num) {
         case SYS_HALT:
@@ -90,14 +92,14 @@ static bool put_user (uint8_t *udst, uint8_t byte) {
     return error_code != -1;
 }
 
-static bool r_valid(const uint8_t *uaddr) {
+static bool r_valid(uint8_t *uaddr) {
     return is_user_vaddr(uaddr) && get_user(uaddr) != -1;
 }
 
-static bool w_valid(const uint8_t *uaddr) {
+static bool w_valid(uint8_t *uaddr) {
     if (is_kernel_vaddr(uaddr))
         return false;
-    uint8_t byte = get_user(uaddr);
+    int byte = get_user(uaddr);
     if (byte == -1)
         return false;
     return put_user(uaddr, byte);
