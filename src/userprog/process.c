@@ -135,7 +135,7 @@ static void start_process(void *file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
     
     /* Create our array of pointers to arguments. */
-    char *argv[100], *next;
+    char *argv[MAX_ARGS], *next;
     int argc = 0, num_chars = 0;
     
     /* Iterate over string.  While doing this, count how long it is, and keep
@@ -146,7 +146,7 @@ static void start_process(void *file_name_) {
     next = file_name;
     /* Keep track of the state of our parsing. */
     bool in_word = false;
-    while (*next != '\0' && num_chars < PGSIZE) {
+    while (*next != '\0' && argc < MAX_ARGS - 1) {
         if (!in_word && *next != ' ') { // Found beginning of word
             in_word = true; // Now we are iterating in a word
             argv[argc] = (char *) num_chars; // num_chars is the offset
@@ -160,6 +160,14 @@ static void start_process(void *file_name_) {
         
         num_chars++;
         next++;
+        
+        /* Need to make sure the stack doesn't grow too large.  On the stack,
+         * we have argc-many pointers, plus a sentinel, argv, argc and return
+         * address which are also 4 bytes.  We also have num_chars characters
+         * which are one byte each. */
+        if (PGSIZE <= (argc + 5) * sizeof(void*) + num_chars) {
+			break;
+		}
     }
     
     /* Stopped iterating before counting for the NULL terminator. */
