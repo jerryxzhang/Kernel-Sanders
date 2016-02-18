@@ -17,7 +17,8 @@ int getArg(int argnum, struct intr_frame *f);
 
 /*
    Functions to check whether the given user memory address is valid for 
-   reading (r), writing(w).
+   reading (r), writing(w). Valid for writing means that it's also valid
+   for reading, so only need to call w_valid().
  */
 
 static bool r_valid(uint8_t *uaddr);
@@ -34,7 +35,7 @@ void syscall_init(void) {
 
 
 static void syscall_handler(struct intr_frame *f) {
-    if (!r_valid(f->esp) || !w_valid(f->esp)) thread_exit(-1);
+    if (!w_valid(f->esp)) thread_exit(-1);
 
     int syscall_num = getArg(0, f);
     

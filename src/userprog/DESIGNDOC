@@ -44,12 +44,14 @@ which parts.
    
    Tim 6
    Jerry 15
+   Jack 12
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
    
    Tim - Argument passing
    Jerry - exit/exec/wait/denying writes
+   Jack - User memory access, sys calls, file descriptor table
 
                            ARGUMENT PASSING
                            ================
@@ -113,6 +115,18 @@ than a kernel crash.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+In syscall.c, we added
+  static struct lock filesys_lock;
+to synchronize access between all sys calls which interact with the file system.
+
+we added
+  static struct file* open_files[MAX_GLOBAL_FILES];
+to track all files opened by processes
+
+In the process struct we added member 
+  int files[MAX_FILES];
+which tracks all the files opened by the process.
+
 /** A single element in the system process table. */
 struct process {
     /** A pointer to the thread structure. Only valid if process is running. */
@@ -158,8 +172,8 @@ struct process {
 
 };
 
-struct thread now stores the process pid (or -1 for kernel threads) so it can be access anytime by calling
-thread_current()->pid.
+struct thread now stores the process pid (or -1 for kernel threads) so it can 
+be access anytime by calling thread_current()->pid.
 
 process_table is a global array that provides memory for processes to store their data
 free_list is a linked list of struct process that allows for simple memory allocation
@@ -169,10 +183,32 @@ free_list is a linked list of struct process that allows for simple memory alloc
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
 
+File descriptors are unique to a process. In our implementation the static
+global array open_files hold pointers to all open files. Each process holds an
+array of ints called files which holds indexes into open_files. The file
+descriptors given to each process is merely the index into their files array,
+which can ultimately be used to locate and manipulate the actualy file.
+
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+We wrote 2 function, 
+
+static bool r_valid(uint8_t *uaddr);
+static bool w_valid(uint8_t *uaddr);
+
+to check whether a given pointer into user memory is valid for reading or 
+writing. These two functions rely on a modification to the page fault handler.
+The page fault handler is modified to move eax into eip and  return -1 in eax 
+if it was triggered by a kernel process. This is combined with the 2 functions
+get_user and put_user given in the instructions to check pointers. Pointers
+are first checked for not NULL and below the PHYS_BASE. Then we use get_user
+to read a byte from an address and see if it page_faults. r_valid stops here.
+w_valid tries to write the byte back into that address to check whether that
+page_faults. After checking a pointer with r_valid or w_valid, it can be
+safely derefenced and used.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -180,6 +216,10 @@ free_list is a linked list of struct process that allows for simple memory alloc
 >> (e.g. calls to pagedir_get_page()) that might result?  What about
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
+
+Our implementation doesn't require checking the page table, since we leverage
+the mmu and page fault handler.
+
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
@@ -204,6 +244,15 @@ The parent then proceeds since the child has exited.
 >> allocated resources (locks, buffers, etc.) are freed?  In a few
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
+
+The sys call handler always checks all user memory space addresses before 
+dereferencing or using it. The sys call handler will terminate the process if 
+it finds the address invalid. Generally we try to put these checks before
+acquring any resources where possible. Thus, the call will terminate the
+process and end before acquring any locks or resources. This is the case with
+buffers passed to read and write. We check them before doing anything else.
+Else, we just remember to release locks and resources. Such is the case in 
+create, where we release filesys_lock at the end.
 
 ---- SYNCHRONIZATION ----
 
@@ -235,9 +284,20 @@ table elements.
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
+We thought if was a "neater" and faster approeach. We wanted to leverage the
+facilities provided in the computer by the mmu instead of taking a round about
+approach of manually checking the the validity of a memory address. There is
+also less logic to work through, since the page fault will catch all
+inappropriate access.
 
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
+One advantage of the design is process isolation. Each process's file
+descriptors are completely isolated from those of others. This improves the
+robustness of the system. The implementation used fixed size arrays for holding
+references both to all open files and to the open files of the process. This
+puts a limitation on the max files that can be opened and also forces a space
+overhead where the max file numbers is fully utilized.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
