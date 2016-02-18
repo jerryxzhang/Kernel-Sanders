@@ -15,6 +15,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
@@ -68,6 +69,9 @@ pid_t process_table_get(void) {
     if (list_empty(&free_list)) {
         return PID_ERROR;
     }
+    
+    enum intr_level old_level = intr_disable();
+    
     struct list_elem *elem = list_pop_back(&free_list);
     struct process *p = list_entry(elem, struct process, elem);
     
@@ -87,7 +91,9 @@ pid_t process_table_get(void) {
     for (i = 0; i < MAX_FILES; i++) {
         p->files[i] = -1;
     }
-
+    
+    intr_set_level(old_level);
+    
     return p->pid;
 }
 
@@ -133,21 +139,18 @@ pid_t process_execute(const char *file_name) {
         return PID_ERROR;
     }
     
+    enum intr_level old_level = intr_disable();
     // Wait till the child finishes loading
     if (!process_table[pid].loaded) {
-        enum intr_level old_level = intr_disable();
-        // Block until the child process exiting wakes it up
         process_table[pid].blocked = true;
         thread_block();
-
-        intr_set_level(old_level);
     }        
-
+    intr_set_level(old_level);
+    
     ASSERT(process_table[pid].loaded);
 
     // Get whether it loaded successfully
     if (!process_table[pid].load_success) {
-        process_table_free(&process_table[pid]);
         return PID_ERROR;
     }
 
@@ -215,13 +218,16 @@ static void start_process(void *file_name_) {
     /* file_name now has a NULL character after file name. */
     success = load(file_name, &if_.eip, &if_.esp);
     strlcpy(process_table[pid].name, file_name, MAX_NAME_LEN);
+    
+    process_table[pid].running = true;
+    enum intr_level old_level = intr_disable();
     process_table[pid].load_success = success;
     process_table[pid].loaded = true;
     if (process_table[pid].blocked) {
         process_table[pid].blocked = false;
         thread_unblock(process_table[process_table[pid].parent_pid].thread_ptr);
     }
-    process_table[pid].running = true;
+    intr_set_level(old_level);
    
     // Quit if load failed
     if (!success) {
@@ -330,17 +336,17 @@ int process_wait(pid_t child_id) {
             || process_table[child_id].parent_pid != thread_current()->pid) {
         return -1;
     }
-    
+
     int ret;
 
+    enum intr_level old_level = intr_disable();
     if (process_table[child_id].running) {
-        enum intr_level old_level = intr_disable();
         // Block until the child process exiting wakes it up
         process_table[child_id].blocked = true;
         thread_block();
-
-        intr_set_level(old_level);
     }
+    intr_set_level(old_level);
+
     // The child process must be done at this point
     ASSERT(!process_table[child_id].running);
 
@@ -353,10 +359,11 @@ int process_wait(pid_t child_id) {
 
 /*! Free the current process's resources. */
 void process_exit(int code) {
-    printf("%s: exit(%d)\n", process_table[thread_current()->pid].name, code);
-
     struct thread *cur = thread_current();
     struct process *p = &process_table[cur->pid];
+    
+    ASSERT(!intr_context());
+    printf("%s: exit(%d)\n", process_table[thread_current()->pid].name, code);
 
     uint32_t *pd;
 
@@ -364,10 +371,12 @@ void process_exit(int code) {
     p->running = false;
 
     // Unblock the parent if it is waiting
+    enum intr_level old_level = intr_disable();
     if (p->blocked) {
         p->blocked = false;
         thread_unblock(process_table[p->parent_pid].thread_ptr);
     }
+    intr_set_level(old_level);
 
     // Deal with any remaining children
     if (!list_empty(&p->children)) {

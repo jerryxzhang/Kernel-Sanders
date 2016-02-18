@@ -5,8 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MAX_PROCESSES 1024
-#define MAX_NAME_LEN 260
+#define MAX_PROCESSES 512
+#define MAX_NAME_LEN 60
 #define MAX_ARGS 100
 #define INIT_PID 0
 #define MAX_FILES 20
@@ -46,8 +46,10 @@ struct process {
     /** Whether the parent process is blocked waiting on this process.  */
     bool blocked;
 
+    /** Whether the process has completed loading */
     bool loaded;
 
+    /** Whether the process successfully loaded */
     bool load_success;
 
 };

@@ -217,8 +217,6 @@ static void syscall_handler(struct intr_frame *f) {
             printf("Not implemented!\n");
             thread_exit(-1);
             break;
-
-
     }
 }
 
