@@ -3,11 +3,14 @@
 #include <syscall-nr.h>
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
+
+#define MAX_GLOBAL_FILES MAX_PROCESSES * 4
 
 static void syscall_handler(struct intr_frame *);
 int getArg(int argnum, struct intr_frame *f);
@@ -22,6 +25,7 @@ static bool w_valid(uint8_t *uaddr);
 static struct lock filesys_lock;
 
 static struct lock filesys_lock;
+static struct file* open_files[MAX_GLOBAL_FILES];
 
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
@@ -42,8 +46,8 @@ static void syscall_handler(struct intr_frame *f) {
             thread_exit((int) getArg(1, f));
             break;
         case SYS_EXEC: {
-            lock_acquire(&filesys_lock);
             const char *cmd_line = (const char*) getArg(1, f);
+            lock_acquire(&filesys_lock);
             if (r_valid((uint8_t *)cmd_line))
                 f->eax = (uint32_t) process_execute(cmd_line);
             else
@@ -55,8 +59,8 @@ static void syscall_handler(struct intr_frame *f) {
             f->eax = (uint32_t) process_wait((int) getArg(1, f));
             break;
         case SYS_CREATE: {
-            lock_acquire(&filesys_lock);
             const char *file = (const char*) getArg(1, f);
+            lock_acquire(&filesys_lock);
             if (r_valid((uint8_t *)file))
                 f->eax = filesys_create(file, (off_t) getArg(2, f));
             else
@@ -65,8 +69,8 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         }
         case SYS_REMOVE: {
-            lock_acquire(&filesys_lock);
             const char *file = (const char*) getArg(1, f);
+            lock_acquire(&filesys_lock);
             if (r_valid((uint8_t *)file))
                 f->eax = filesys_remove(file);
             else
@@ -74,20 +78,141 @@ static void syscall_handler(struct intr_frame *f) {
             lock_release(&filesys_lock);
             break;
         }
-        case SYS_OPEN: 
+        case SYS_OPEN: {
+            int* files = process_current()->files;
+            int process_slot = 2;
+            int global_slot = 0;
+            struct file* new_file;
+            const char *file = (const char*) getArg(1, f);
+            lock_acquire(&filesys_lock);
+            if (!r_valid((uint8_t *)file))
+                goto fail;
+            while (process_slot < MAX_FILES && files[process_slot] != -1)
+                process_slot++;
+            if (process_slot == MAX_FILES)
+                goto fail;
+            while (global_slot < MAX_GLOBAL_FILES && 
+                open_files[global_slot] != NULL)
+                global_slot++;
+            if (global_slot == MAX_GLOBAL_FILES)
+                //can't have more open files
+                goto fail;
+            
+            new_file = filesys_open(file);
+            if (new_file != NULL) {
+                open_files[global_slot] = new_file;
+                files[process_slot] = global_slot;
+                f->eax = process_slot;
+                goto done;
+            }
+            fail:
+            f->eax = -1;
+            done:
+            lock_release(&filesys_lock);
             break;
-        case SYS_FILESIZE:
+        }
+        case SYS_FILESIZE: {
+            int fd = (int) getArg(1, f);
+            int index;
+            if (fd >= 0 && fd < MAX_FILES) {
+                lock_acquire(&filesys_lock);
+                index = process_current()->files[fd];
+                if (index != -1) {
+                    f->eax = file_length(open_files[index]);
+                    lock_release(&filesys_lock);
+                    break;
+                }
+                lock_release(&filesys_lock);
+            }
+            f->eax = -1;
             break;
-        case SYS_READ:
+        }
+        case SYS_READ:{
+            int fd = (int) getArg(1, f);
+            void *buffer = (void *) getArg(2, f);
+            off_t size = (off_t) getArg(3, f);
+            int index;
+            if (fd >= 0 && fd < MAX_FILES && w_valid((uint8_t*)buffer)) {
+                lock_acquire(&filesys_lock);
+                index = process_current()->files[fd];
+                if (index != -1) {
+                    f->eax = file_read(open_files[index], buffer, size);
+                    lock_release(&filesys_lock);
+                    break;
+                }
+                lock_release(&filesys_lock);
+            }
+            f->eax = -1;
             break;
-        case SYS_WRITE:
+        }
+        case SYS_WRITE:{
+            int fd = (int) getArg(1, f);
+            void *buffer = (void *) getArg(2, f);
+            off_t size = (off_t) getArg(3, f);
+            int index;
+            if (fd >= 0 && fd < MAX_FILES && r_valid((uint8_t*)buffer)) {
+                if (fd == 1) {
+                    putbuf(buffer, size);
+                    break;
+                }
+                else{
+                    lock_acquire(&filesys_lock);
+                    index = process_current()->files[fd];
+                    if (index != -1) {
+                        f->eax = file_write(open_files[index], buffer, size);
+                        lock_release(&filesys_lock);
+                        break;
+                    }
+                    lock_release(&filesys_lock);
+                }
+            }
+            f->eax = -1;
             break;
-        case SYS_SEEK:
+        }
+        case SYS_SEEK:{
+            int fd = (int) getArg(1, f);
+            off_t pos = (off_t) getArg(2, f);
+            int index;
+            if (fd >= 0 && fd < MAX_FILES) {
+                lock_acquire(&filesys_lock);
+                index = process_current()->files[fd];
+                if (index != -1) 
+                    file_seek(open_files[index], pos);
+                lock_release(&filesys_lock);
+            }
             break;
-        case SYS_TELL:
+        }
+        case SYS_TELL:{
+            int fd = (int) getArg(1, f);
+            int index;
+            if (fd >= 0 && fd < MAX_FILES) {
+                lock_acquire(&filesys_lock);
+                index = process_current()->files[fd];
+                if (index != -1) {
+                    f->eax = file_tell(open_files[index]);
+                    lock_release(&filesys_lock);
+                    break;
+                }
+                lock_release(&filesys_lock);
+            }
+            f->eax = -1;
             break;
-        case SYS_CLOSE:
+        }
+        case SYS_CLOSE:{
+            int fd = (int) getArg(1, f);
+            int index;
+            if (fd >= 0 && fd < MAX_FILES) {
+                lock_acquire(&filesys_lock);
+                index = process_current()->files[fd];
+                if (index != -1) {
+                    file_close(open_files[index]);
+                    open_files[index] = NULL;
+                }
+                process_current()->files[fd] = -1;
+                lock_release(&filesys_lock);
+            }
             break;
+        }
         default:
             printf("Not implemented!\n");
             thread_exit(-1);

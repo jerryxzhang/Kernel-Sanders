@@ -9,6 +9,7 @@
 #define MAX_NAME_LEN 260
 #define MAX_ARGS 100
 #define INIT_PID 0
+#define MAX_FILES 20
 
 /** A single element in the system process table. */
 struct process {
@@ -22,6 +23,9 @@ struct process {
     /** Ids of this process and its parent. */
     pid_t pid;
     pid_t parent_pid; /** -1 if parent has died. */
+
+    /** A list of pointers to open files **/
+    int files[MAX_FILES];
 
     /** A list of child processes. */
     struct list children;
@@ -54,6 +58,7 @@ pid_t process_execute(const char *file_name);
 int process_wait(pid_t);
 void process_exit(int code);
 void process_activate(void);
+struct process* process_current(void);
 
 #endif /* userprog/process.h */
 

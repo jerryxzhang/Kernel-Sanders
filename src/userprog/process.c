@@ -27,6 +27,10 @@ pid_t process_table_get(void);
 void process_table_free(struct process *p);
 void stack_put_args(void **esp, char **argv, int argc, void *ret);
 
+struct process* process_current(void) {
+    return &process_table[thread_current()->pid];
+}
+
 /** 
  * Initialize the process table.
  */
@@ -77,6 +81,13 @@ pid_t process_table_get(void) {
     list_init(&p->children);
 
     p->parent_pid = thread_current()->pid;
+
+    int i;
+
+    for (i = 0; i < MAX_FILES; i++) {
+        p->files[i] = -1;
+    }
+
     return p->pid;
 }
 
