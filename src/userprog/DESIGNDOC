@@ -9,7 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Tim Menninger <tmenning@caltech.edu>
-FirstName LastName <email@domain.example>
+Jerry Zhang <jerry.zhang@caltech.edu>
 FirstName LastName <email@domain.example>
 
 >> Specify how many late tokens you are using on this assignment:  
@@ -18,8 +18,8 @@ FirstName LastName <email@domain.example>
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
-   commit ...
+   Repository URL:  /cs/courses/cs124/teams/KernelSanders.git
+   commit <>
 
 ---- PRELIMINARIES ----
 
@@ -43,11 +43,13 @@ which parts.
    Make sure that each member's total time is listed.
    
    Tim 6
+   Jerry 15
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
    
    Tim - Argument passing
+   Jerry - exit/exec/wait/denying writes
 
                            ARGUMENT PASSING
                            ================
@@ -111,6 +113,58 @@ than a kernel crash.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/** A single element in the system process table. */
+struct process {
+    /** A pointer to the thread structure. Only valid if process is running. */
+    struct thread *thread_ptr; 
+
+    /** A buffer storing the process name. **/
+    char name[MAX_NAME_LEN + 1];
+
+    /** Ids of this process and its parent. */
+    pid_t pid;
+    pid_t parent_pid; /** -1 if parent has died. */
+
+    /** A list of pointers to open files **/
+    int files[MAX_FILES];
+
+    /** A pointer to this process's executable. */
+    struct file* file;
+
+    /** A list of child processes. */
+    struct list children;
+
+    /** The return code the process supplies to exit() or -1 if killed by kernel.
+     * Only valid if process is not running. */
+    int return_code;
+
+    /** Linked list structure. Reused for children list and free_list. */
+    struct list_elem elem;
+
+    /** Whether the process is running, or has completed. */
+    bool running;
+
+    /** Whether this struct represents a valid process, or is unallocated. */
+    bool valid;
+
+    /** Whether the parent process is blocked waiting on this process.  */
+    bool blocked;
+
+    /** Whether the process has completed loading */
+    bool loaded;
+
+    /** Whether the process successfully loaded */
+    bool load_success;
+
+};
+
+struct thread now stores the process pid (or -1 for kernel threads) so it can be access anytime by calling
+thread_current()->pid.
+
+process_table is a global array that provides memory for processes to store their data
+free_list is a linked list of struct process that allows for simple memory allocation
+
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
@@ -129,6 +183,13 @@ than a kernel crash.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+A process keeps track of all the information inside its process struct.
+When a process starts a child, it adds the child to a list of children
+and the child has a pointer to the parent. When the parent waits on the 
+child, it checks if the child has finished running. If so, it records
+its exit status. If not, it blocks. When the child later exits, it
+checks if the parent is blocked on it, and if so, unblocks the parent.
+The parent then proceeds since the child has exited.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -150,6 +211,10 @@ than a kernel crash.
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+The parent process spins off the child thread, and checks if it has 
+finished loading. If so, it records the load status. If not, it blocks.
+When the child finishes loading, it checks if the parent is blocked
+and then unblocks it, allowing the parent to then record the status.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -157,6 +222,14 @@ than a kernel crash.
 >> that all resources are freed in each case?  How about when P
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
+If P calls wait before before or after C exits, the procedure is 
+described above and the wait call frees the process table resource 
+associated with C. If P terminates without waiting, it marks on its
+remaining children that it is dead. The children then, when they 
+exit, automatically free their own process table element. If P
+terminates without waiting for C after C exits, P will look through
+its list of children for any that have exited and free their process
+table elements.
 
 ---- RATIONALE ----
 
@@ -168,6 +241,9 @@ than a kernel crash.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+We changed pid_t to be the index into the system process table. 
+This way, there does not need to be a complex map between tid_t and
+process table elements.
 
 			  SURVEY QUESTIONS
 			  ================
