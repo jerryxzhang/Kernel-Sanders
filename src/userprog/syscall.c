@@ -64,7 +64,7 @@ static void syscall_handler(struct intr_frame *f) {
             if (r_valid((uint8_t *)file))
                 f->eax = filesys_create(file, (off_t) getArg(2, f));
             else
-                f->eax = 0;
+                process_exit(-1);
             lock_release(&filesys_lock);
             break;
         }
@@ -74,7 +74,7 @@ static void syscall_handler(struct intr_frame *f) {
             if (r_valid((uint8_t *)file))
                 f->eax = filesys_remove(file);
             else
-                f->eax = 0;
+                process_exit(-1);
             lock_release(&filesys_lock);
             break;
         }
@@ -84,9 +84,11 @@ static void syscall_handler(struct intr_frame *f) {
             int global_slot = 0;
             struct file* new_file;
             const char *file = (const char*) getArg(1, f);
+            if (!r_valid((uint8_t *)file)){
+                process_exit(-1);
+                break;
+            }
             lock_acquire(&filesys_lock);
-            if (!r_valid((uint8_t *)file))
-                goto fail;
             while (process_slot < MAX_FILES && files[process_slot] != -1)
                 process_slot++;
             if (process_slot == MAX_FILES)
@@ -132,7 +134,11 @@ static void syscall_handler(struct intr_frame *f) {
             void *buffer = (void *) getArg(2, f);
             off_t size = (off_t) getArg(3, f);
             int index;
-            if (fd >= 0 && fd < MAX_FILES && w_valid((uint8_t*)buffer)) {
+            if (!w_valid((uint8_t*)buffer)) {
+                process_exit(-1);
+                break;
+            }
+            if (fd >= 0 && fd < MAX_FILES) {
                 lock_acquire(&filesys_lock);
                 index = process_current()->files[fd];
                 if (index != -1) {
@@ -150,7 +156,11 @@ static void syscall_handler(struct intr_frame *f) {
             void *buffer = (void *) getArg(2, f);
             off_t size = (off_t) getArg(3, f);
             int index;
-            if (fd >= 0 && fd < MAX_FILES && r_valid((uint8_t*)buffer)) {
+            if (!r_valid((uint8_t*)buffer)) {
+                process_exit(1);
+                break;
+            }
+            if (fd >= 0 && fd < MAX_FILES) {
                 if (fd == 1) {
                     putbuf(buffer, size);
                     break;
