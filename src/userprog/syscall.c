@@ -64,7 +64,7 @@ static void syscall_handler(struct intr_frame *f) {
             if (r_valid((uint8_t *)file))
                 f->eax = filesys_create(file, (off_t) getArg(2, f));
             else
-                process_exit(-1);
+                thread_exit(-1);
             lock_release(&filesys_lock);
             break;
         }
@@ -74,7 +74,7 @@ static void syscall_handler(struct intr_frame *f) {
             if (r_valid((uint8_t *)file))
                 f->eax = filesys_remove(file);
             else
-                process_exit(-1);
+                thread_exit(-1);
             lock_release(&filesys_lock);
             break;
         }
@@ -85,7 +85,7 @@ static void syscall_handler(struct intr_frame *f) {
             struct file* new_file;
             const char *file = (const char*) getArg(1, f);
             if (!r_valid((uint8_t *)file)){
-                process_exit(-1);
+                thread_exit(-1);
                 break;
             }
             lock_acquire(&filesys_lock);
@@ -135,7 +135,7 @@ static void syscall_handler(struct intr_frame *f) {
             off_t size = (off_t) getArg(3, f);
             int index;
             if (!w_valid((uint8_t*)buffer) || !w_valid((uint8_t*)((off_t)buffer) + size)) {
-                process_exit(-1);
+                thread_exit(-1);
                 break;
             }
             if (fd >= 0 && fd < MAX_FILES) {
@@ -157,7 +157,7 @@ static void syscall_handler(struct intr_frame *f) {
             off_t size = (off_t) getArg(3, f);
             int index;
             if (!r_valid((uint8_t*)buffer) || !r_valid((uint8_t*)((off_t)buffer) + size)) {
-                process_exit(-1);
+                thread_exit(-1);
                 break;
             }
             if (fd >= 0 && fd < MAX_FILES) {
@@ -176,7 +176,7 @@ static void syscall_handler(struct intr_frame *f) {
                     lock_release(&filesys_lock);
                 }
             }
-            f->eax = -1;
+            f->eax = 0;
             break;
         }
         case SYS_SEEK:{
