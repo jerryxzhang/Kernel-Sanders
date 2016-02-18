@@ -138,6 +138,9 @@ int main(void) {
 
     /* Run actions specified on kernel command line. */
     run_actions(argv);
+    
+    /* Make sure we have no leaks */
+    ASSERT(process_count() == MAX_PROCESSES - 1);
 
     /* Finish up. */
     shutdown();
