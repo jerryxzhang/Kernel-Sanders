@@ -134,7 +134,7 @@ static void syscall_handler(struct intr_frame *f) {
             void *buffer = (void *) getArg(2, f);
             off_t size = (off_t) getArg(3, f);
             int index;
-            if (!w_valid((uint8_t*)buffer)) {
+            if (!w_valid((uint8_t*)buffer) || !w_valid((uint8_t*)((off_t)buffer) + size)) {
                 process_exit(-1);
                 break;
             }
@@ -156,8 +156,8 @@ static void syscall_handler(struct intr_frame *f) {
             void *buffer = (void *) getArg(2, f);
             off_t size = (off_t) getArg(3, f);
             int index;
-            if (!r_valid((uint8_t*)buffer)) {
-                process_exit(1);
+            if (!r_valid((uint8_t*)buffer) || !r_valid((uint8_t*)((off_t)buffer) + size)) {
+                process_exit(-1);
                 break;
             }
             if (fd >= 0 && fd < MAX_FILES) {
