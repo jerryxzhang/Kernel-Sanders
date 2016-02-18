@@ -221,6 +221,8 @@ static void syscall_handler(struct intr_frame *f) {
 }
 
 int getArg(int argnum, struct intr_frame *f) {
+    int* addr = (int*) f->esp + argnum;
+    if (!r_valid((uint8_t*)addr) || !w_valid((uint8_t*)addr)) thread_exit(-1);
     return *(((int*) f->esp) + argnum);
 }
 

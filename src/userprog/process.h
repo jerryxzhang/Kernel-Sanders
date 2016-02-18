@@ -27,6 +27,9 @@ struct process {
     /** A list of pointers to open files **/
     int files[MAX_FILES];
 
+    /** A pointer to this process's executable. */
+    struct file* file;
+
     /** A list of child processes. */
     struct list children;
 

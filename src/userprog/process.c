@@ -81,6 +81,7 @@ pid_t process_table_get(void) {
     p->blocked = false;
     p->running = false;
     p->loaded = false;
+    p->file = NULL;
 
     list_init(&p->children);
 
@@ -369,6 +370,7 @@ void process_exit(int code) {
 
     p->return_code = code;
     p->running = false;
+    if (p->file) file_close(p->file);
 
     // Unblock the parent if it is waiting
     enum intr_level old_level = intr_disable();
@@ -602,7 +604,11 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
 done:
     /* We arrive here whether the load is successful or not. */
-    if (!success) file_close(file);
+    if (!success) {
+        file_close(file);
+    } else {
+        process_current()->file = file;
+    }
 
     return success;
 }
