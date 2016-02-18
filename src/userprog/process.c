@@ -49,6 +49,13 @@ void process_init(void) {
     process_table[INIT_PID].thread_ptr = thread_current();
 }
 
+/**
+ * Returns the number of process elements in the process table.
+ */
+int process_count(void) {
+    return list_size(&free_list);
+}
+
 /** 
  * Allocate and intialize a element in the process table and return
  * the process id.
@@ -64,7 +71,9 @@ pid_t process_table_get(void) {
 
     p->valid = true;
     p->blocked = false;
-    p->running = true;
+    p->running = false;
+    p->loaded = false;
+
     list_init(&p->children);
 
     p->parent_pid = thread_current()->pid;
@@ -112,18 +121,34 @@ pid_t process_execute(const char *file_name) {
         process_table_free(&process_table[pid]);
         return PID_ERROR;
     }
+    
+    // Wait till the child finishes loading
+    if (!process_table[pid].loaded) {
+        enum intr_level old_level = intr_disable();
+        // Block until the child process exiting wakes it up
+        process_table[pid].blocked = true;
+        thread_block();
+
+        intr_set_level(old_level);
+    }        
+
+    ASSERT(process_table[pid].loaded);
+
+    // Get whether it loaded successfully
+    if (!process_table[pid].load_success) {
+        process_table_free(&process_table[pid]);
+        return PID_ERROR;
+    }
 
     // Add new process to current children
     list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);    
-
-    while (process_table[pid].thread_ptr->status == THREAD_BLOCKED)
-        thread_unblock(process_table[pid].thread_ptr);
 
     return pid;
 }
 
 /*! A thread function that loads a user process and starts it running. */
 static void start_process(void *file_name_) {
+    pid_t pid = thread_current()->pid;
     char *file_name = file_name_;
     struct intr_frame if_;
     bool success;
@@ -175,11 +200,24 @@ static void start_process(void *file_name_) {
     
     /* Want last argv pointer to be a NULL pointer, so put it in the array. */
     argv[argc] = NULL;
-
+    
     /* file_name now has a NULL character after file name. */
     success = load(file_name, &if_.eip, &if_.esp);
-    strlcpy(process_table[thread_current()->pid].name, file_name, MAX_NAME_LEN);
-
+    strlcpy(process_table[pid].name, file_name, MAX_NAME_LEN);
+    process_table[pid].load_success = success;
+    process_table[pid].loaded = true;
+    if (process_table[pid].blocked) {
+        process_table[pid].blocked = false;
+        thread_unblock(process_table[process_table[pid].parent_pid].thread_ptr);
+    }
+    process_table[pid].running = true;
+   
+    // Quit if load failed
+    if (!success) {
+        palloc_free_page(file_name);
+        thread_exit(-1);
+    }
+    
     /* Put the arguments on the stack that was loaded.  The structure of
      * the arguments on the stack will look like:
      *           _____________
@@ -226,10 +264,7 @@ static void start_process(void *file_name_) {
      * may not be if the string is of maximum length. */
     *(((char *) if_.esp) + num_chars) = '\0';
     
-    /* If load failed, quit. */
     palloc_free_page(file_name);
-    if (!success) 
-        thread_exit(-1);
                 
     /* Update values in argv to point in stack. */
     int i = 0;
@@ -303,11 +338,6 @@ int process_wait(pid_t child_id) {
     process_table_free(&process_table[child_id]);
 
     return ret;
-}
-
-/** Used by the kernel to kill a misbehaving process */
-void kernel_exit(void) {
-    process_exit(-1);
 }
 
 /*! Free the current process's resources. */
@@ -553,6 +583,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 done:
     /* We arrive here whether the load is successful or not. */
     if (!success) file_close(file);
+
     return success;
 }
 

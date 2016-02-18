@@ -41,12 +41,17 @@ struct process {
 
     /** Whether the parent process is blocked waiting on this process.  */
     bool blocked;
+
+    bool loaded;
+
+    bool load_success;
+
 };
 
 void process_init(void);
+int process_count(void);
 pid_t process_execute(const char *file_name);
 int process_wait(pid_t);
-void kernel_exit(void);
 void process_exit(int code);
 void process_activate(void);
 
