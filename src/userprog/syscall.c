@@ -19,13 +19,15 @@ int getArg(int argnum, struct intr_frame *f);
 
 static bool r_valid(uint8_t *uaddr);
 static bool w_valid(uint8_t *uaddr);
+static struct lock filesys_lock;
 
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
+    lock_init(&filesys_lock);
 }
 
 
-static struct lock filesys_lock;
+
 
 
 
@@ -122,11 +124,11 @@ static bool put_user (uint8_t *udst, uint8_t byte) {
 }
 
 static bool r_valid(uint8_t *uaddr) {
-    return is_user_vaddr(uaddr) && get_user(uaddr) != -1;
+    return uaddr != NULL && is_user_vaddr(uaddr) && get_user(uaddr) != -1;
 }
 
 static bool w_valid(uint8_t *uaddr) {
-    if (is_kernel_vaddr(uaddr))
+    if (uaddr == NULL || is_kernel_vaddr(uaddr))
         return false;
     int byte = get_user(uaddr);
     if (byte == -1)
