@@ -680,6 +680,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT(ofs % PGSIZE == 0);
 
     file_seek(file, ofs);
+    int total_ofs = ofs;
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
            We will read PAGE_READ_BYTES bytes from FILE
@@ -688,27 +689,32 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         /* Get a page of memory. */
-        uint8_t *kpage = palloc_get_page(PAL_USER);
-        if (kpage == NULL)
-            return false;
+        struct supp_page *spg = create_filesys_page(upage, file, total_ofs, page_read_bytes, writable);
+		if (!spg) {
+			free_supp_page(spg);
+			return false;
+		}
 
         /* Load this page. */
-        if (file_read(file, kpage, page_read_bytes) != (int) page_read_bytes) {
-            palloc_free_page(kpage);
+        struct frame *new_fr = create_frame(upage, PAL_USER);
+        if (file_read(file, new_fr->phys_addr, page_read_bytes) != (int) page_read_bytes) {
+            free_supp_page(spg);
             return false;
         }
-        memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
+        memset(new_fr->phys_addr + page_read_bytes, 0, page_zero_bytes);
+        
         /* Add the page to the process's address space. */
-        if (!install_page(upage, kpage, writable)) {
-            palloc_free_page(kpage);
+        if (!install_page(upage, new_fr->phys_addr, writable)) {
+            free_supp_page(spg);
             return false; 
         }
+
 
         /* Advance. */
         read_bytes -= page_read_bytes;
         zero_bytes -= page_zero_bytes;
         upage += PGSIZE;
+        total_ofs += PGSIZE;
     }
     return true;
 }
@@ -716,16 +722,19 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
 /*! Create a minimal stack by mapping a zeroed page at the top of
     user virtual memory. */
 static bool setup_stack(void **esp) {
+	struct frame *new_fr;
     uint8_t *kpage;
     bool success = false;
 
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    void *upage = (void *)(PHYS_BASE - PGSIZE);
+    new_fr = create_frame(upage, PAL_USER | PAL_ZERO);
+    kpage = new_fr->phys_addr;
     if (kpage != NULL) {
-        success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+        success = install_page(upage, kpage, true);
         if (success)
             *esp = PHYS_BASE - 1;
         else
-            palloc_free_page(kpage);
+            free_frame(new_fr);
     }
     return success;
 }

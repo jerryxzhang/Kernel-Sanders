@@ -22,6 +22,8 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 
 #ifdef USERPROG
 
@@ -104,6 +106,9 @@ int main(void) {
     palloc_init(user_page_limit);
     malloc_init();
     paging_init();
+    
+    init_frame_table();
+    init_supp_page_table();
 
     /* Segmentation. */
 #ifdef USERPROG
