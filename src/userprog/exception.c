@@ -124,7 +124,7 @@ static void page_fault(struct intr_frame *f) {
     asm ("movl %%cr2, %0" : "=r" (fault_addr));
     
     page_to_new_frame(fault_addr);
-
+	
     /* Turn interrupts back on (they were only off so that we could
        be assured of reading CR2 before it changed). */
     intr_enable();

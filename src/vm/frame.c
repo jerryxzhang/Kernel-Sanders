@@ -1,15 +1,41 @@
-#include <debug.h>
-#include <stddef.h>
-#include <stdio.h>
+/*! \file frame.c
+ * 
+ *  Contains methods for the frame table and frame pages.
+ */
 
-#include "frame.h"
-#include "threads/thread.h"
+
+#include <debug.h>
+#include <inttypes.h>
+#include <round.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "userprog/gdt.h"
+#include "userprog/pagedir.h"
+#include "userprog/tss.h"
+#include "userprog/process.h"
+#include "filesys/directory.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "threads/flags.h"
+#include "threads/init.h"
+#include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "frame.h"
+#include "page.h"
+#include "swap.h"
 
 
 
 struct list frame_table;	/* Frames in the table */
+
+
+struct frame *frame_choose_victim(void); /* Chooses the next frame to free. */
 
 
 /*! init_frame_table
@@ -23,64 +49,116 @@ void init_frame_table(void) {
 }
 
 
-/*! create_frame
+/*! frame_create
  *  
  *  @description This gets a new page from the user pool and adds it to the
- *  frame table.
+ *  frame table.  If there are no available pages, this evicts one and 
+ *  tries again.
  *  
  *  @return a pointer to the new page
  */
-struct frame *create_frame(void *vaddr, int flags) {
+struct frame *frame_create(int flags) {
 	/* Get a page from the user pool. */
 	void *kpage = palloc_get_page(flags);
+	
+	/* If couldn't get page, evict and try again. */
+	if (!kpage) {
+		//frame_evict();
+		//kpage = palloc_get_page(flags);
+	}
 	
 	/* Create and update the frame struct so we can add it to our table. */
 	struct frame *new_frame = (struct frame *)malloc(sizeof(struct frame));
 	new_frame->phys_addr = kpage;
-	new_frame->vaddr = vaddr;
 	
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
 	
-	/* If no pages, frame full, this will panic. */
 	return new_frame;
 }
 
 
-/*! free_frame
+/*! frame_free
  * 
  *  @description This frees a frame and removes it from the frame list.
- *  If no frame found, this does nothing.
+ *  Then it frees the page inside of it.
  * 
- *  @param page - the page to be freed
+ *  @param fr - the frame to be freed
  *
  *  @return 0 if no errors, 1 otherwise.
  */
-int free_frame(void *page) {
-	/* Will point to the frame we are freeing if we find it. */
-	struct frame *to_del = NULL;
-	/* List iterator for finding frame. */
-	struct list_elem *e;
+int frame_free(struct frame *fr) {
+	ASSERT (fr);
 	
-	/* Search for the frame with the associated page. */
-	for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e)) {
-		/* Get the frame from the element. */
-		to_del = list_entry(e, struct frame, frame_elem);
-		ASSERT(to_del != NULL);
-		
-		/* If it is a match, great we're done. */
-		if (page == to_del->phys_addr)
-			break;
-		else /* Go back to NULL so we can know if we found the frame. */
-			to_del = NULL;
-	}
+	/* Remove the frame from the frame table. */
+	list_remove(&fr->frame_elem);
 	
-	/* If we found the frame, delete the page and remove frame from table. */
-	if (to_del) {
-		/* Remove from table. */
-		list_remove(&to_del->frame_elem);
-	}
+	/* Remove the page so there is space. */
+	palloc_free_page(fr->phys_addr);
 	
 	/* Return 0 if successful, 1 otherwise. */
-	return (to_del ? 0 : 1);
+	return 0;
+}
+
+
+
+/*! frame_choose_victim
+ * 
+ *  @description Chooses a frame whose page will be evicted to free it for the
+ *  next page.
+ * 
+ *  @return a pointer to the frame whose page should be evicted.
+ */
+struct frame *frame_choose_victim(void) {
+	/*! TODO: Make this better.  Currently always chooses the first page. */
+	return list_entry(list_begin(&frame_table), struct frame, frame_elem);
+}
+
+
+
+/*! frame_evict
+ *  
+ *  @description Evicts a page from a frame to free it for another page's use.
+ */
+void frame_evict(void) {
+	/* Choose the frame whose page(s) should be evicted. */
+	struct frame *victim = frame_choose_victim();
+	
+	/*! TODO: check my logic. I'm not sure if I correctly handle aliasing by
+	 *  finding any and all pages that use this frame. */
+	struct list_elem *e;
+	struct supp_page *spg;
+	for (e = list_begin(&supp_page_table); e != list_end(&supp_page_table); e = list_next(e)) {
+		/* Get the supplementary page so we can decide how to handle this. */
+		spg = list_entry(e, struct supp_page, supp_page_elem);
+		
+		/* Only care if this page is associated with the frame. */
+		if (spg->fr == victim) {
+			/* If it is dirty, we need to store the data. */
+			if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr)) {
+				switch (spg->type) {
+					case filesys :
+						/* Write it back to the file. */
+						file_write_at(spg->fil, spg->fr->phys_addr, spg->bytes, spg->offset);
+						break;
+						
+					case swapslot :
+						/* Write to a swap. */
+						spg->swap = swap_put_page(spg->fr->phys_addr);
+						spg->fr = NULL;
+						break;
+						
+					default :
+						PANIC ("Error evicting frame.\n");
+						break;
+				}
+			}
+			
+			/* Clear the page and frame. */
+			frame_free(spg->fr);
+			
+			/* Free the supplemental page. */
+			free_supp_page(spg);
+		}
+	}
 }

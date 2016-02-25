@@ -688,20 +688,22 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+        /* Load this page. */
+        struct frame *new_fr = frame_create(PAL_USER);
+        if (file_read(file, new_fr->phys_addr, page_read_bytes) != (int) page_read_bytes) {
+            frame_free(new_fr);
+            return false;
+        }
+        memset(new_fr->phys_addr + page_read_bytes, 0, page_zero_bytes);
+
         /* Get a page of memory. */
-        struct supp_page *spg = create_filesys_page(upage, file, total_ofs, page_read_bytes, writable);
+        struct supp_page *spg = create_filesys_page(\
+				upage, thread_current()->pagedir, new_fr,\
+				file, total_ofs, page_read_bytes, writable);
 		if (!spg) {
 			free_supp_page(spg);
 			return false;
 		}
-
-        /* Load this page. */
-        struct frame *new_fr = create_frame(upage, PAL_USER);
-        if (file_read(file, new_fr->phys_addr, page_read_bytes) != (int) page_read_bytes) {
-            free_supp_page(spg);
-            return false;
-        }
-        memset(new_fr->phys_addr + page_read_bytes, 0, page_zero_bytes);
         
         /* Add the page to the process's address space. */
         if (!install_page(upage, new_fr->phys_addr, writable)) {
@@ -727,14 +729,14 @@ static bool setup_stack(void **esp) {
     bool success = false;
 
     void *upage = (void *)(PHYS_BASE - PGSIZE);
-    new_fr = create_frame(upage, PAL_USER | PAL_ZERO);
+    new_fr = frame_create(PAL_USER | PAL_ZERO);
     kpage = new_fr->phys_addr;
     if (kpage != NULL) {
         success = install_page(upage, kpage, true);
         if (success)
             *esp = PHYS_BASE - 1;
         else
-            free_frame(new_fr);
+            frame_free(new_fr);
     }
     return success;
 }

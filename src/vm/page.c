@@ -1,3 +1,9 @@
+/*! \file page.c
+ * 
+ *  Contains methods for supplementary pages.
+ */
+
+
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -20,11 +26,11 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "vm/frame.h"
+#include "frame.h"
+#include "page.h"
+#include "swap.h"
 
 
-
-struct list supp_page_table;
 
 
 struct supp_page *get_supp_page(void *vaddr); /* Returns physical address of page. */
@@ -111,14 +117,11 @@ struct frame *page_to_new_frame(void *vaddr) {
 	/* Get supplemental page so we know where to look for vaddr data. */
 	struct supp_page *spg = get_supp_page(vaddr);
 	
-	free_frame(vaddr);
+	/* Probably no frame, but delete it just in case so we can replace it. */
+	frame_free(spg->fr);
 		
 	/* Create a new frame to load vaddr's data into. */
-	struct frame *new_frame = create_frame(vaddr, PAL_USER);
-	
-	/* Declare info we will use to do copy after switch structure. */
-	char *start = NULL; /* Where the data starts to copy. */
-	int bytes = 0; /* Number of bytes to copy (rest are zeroes). */
+	struct frame *new_frame = frame_create(PAL_USER);
 	
 	/* Populate new frame based on what vaddr supposedly pointed to. */
 	switch (spg->type) {
@@ -131,8 +134,7 @@ struct frame *page_to_new_frame(void *vaddr) {
 			break;
 			
 		case swapslot : /* Read from swap slot. */
-			start = NULL; /*! WILL HAVE TO CHANGE */
-			bytes = 0;    /*! WILL HAVE TO CHANGE */
+			swap_retrieve_page(new_frame->phys_addr, spg->swap);
 			break;
 			
 		case kernel : /* Shouldn't be here because valid_page_data was true. */
@@ -157,13 +159,15 @@ struct frame *page_to_new_frame(void *vaddr) {
 
 /*! remove_page
  * 
- *  @description Removes a page from the supplemental page table.
+ *  @description Removes a page from the supplemental page table and frees
+ *  the page.
  * 
  *  @param vaddr - pointer to the virtual page that is to be removed.
  * 
  *  @return 0 if successful, nonzero otherwise.
  */
 int free_supp_page(struct supp_page *spg) {
+	list_remove(&spg->supp_page_elem);
 	free_supp_page(spg);
 	return 0;
 }
@@ -185,19 +189,44 @@ int free_supp_page(struct supp_page *spg) {
  * 
  *  @return a pointer to the supplemental page
  */
-struct supp_page *create_filesys_page(void *vaddr, struct file *file, int offset, int bytes, bool writable) {
-	ASSERT(vaddr != NULL);
+struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable) {
 	ASSERT(file != NULL);
 	
 	/* Create and populate the page. */
 	struct supp_page *new_page = (struct supp_page *)malloc(sizeof(struct supp_page));
+	new_page->fr = fr;
 	new_page->type = filesys;
 	new_page->vaddr = vaddr;
 	new_page->fil = file;
 	new_page->offset = offset;
 	new_page->bytes = bytes;
 	new_page->wr = writable;
-	new_page->pd = thread_current()->pagedir;
+	new_page->pd = pd;
+	
+	new_page->swap = NULL;
+	
+	/* Add page to table. */
+	list_push_back(&supp_page_table, &new_page->supp_page_elem);
+	
+	return new_page;
+}
+
+
+
+
+struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, struct swap_slot *swap, bool writable) {
+	/* Create and populate the page. */
+	struct supp_page *new_page = (struct supp_page *)malloc(sizeof(struct supp_page));
+	new_page->fr = fr;
+	new_page->type = swapslot;
+	new_page->vaddr = vaddr;
+	new_page->fil = NULL;
+	new_page->offset = 0;
+	new_page->bytes = 0;
+	new_page->wr = writable;
+	new_page->pd = pd;
+	
+	new_page->swap = swap;
 	
 	/* Add page to table. */
 	list_push_back(&supp_page_table, &new_page->supp_page_elem);

@@ -24,6 +24,7 @@
 #include "threads/thread.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/swap.h"
 
 #ifdef USERPROG
 
@@ -106,9 +107,6 @@ int main(void) {
     palloc_init(user_page_limit);
     malloc_init();
     paging_init();
-    
-    init_frame_table();
-    init_supp_page_table();
 
     /* Segmentation. */
 #ifdef USERPROG
@@ -137,6 +135,13 @@ int main(void) {
     ide_init();
     locate_block_devices();
     filesys_init(format_filesys);
+#endif
+
+#ifdef VM
+	/* Set up virtual memory. */
+    init_frame_table();
+    init_supp_page_table();
+    init_swap_table();
 #endif
 
     printf("Boot complete.\n");

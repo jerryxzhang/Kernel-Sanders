@@ -109,30 +109,6 @@ bool pagedir_set_page(uint32_t *pd, void *upage, void *kpage, bool writable) {
 }
 
 
-/*! Also map upage to supp_page associated with it and kpage.  This does the
- *  exact same thing that pagedir_set_page does, except it maps upage to
- *  a supplementary page instead of a physical address. */
-bool pagedir_set_supp_page(uint32_t *pd, void *upage, struct supp_page *spg) {
-    uint32_t *pte;
-
-    ASSERT(pg_ofs(upage) == 0);
-    ASSERT(is_user_vaddr(upage));
-    ASSERT(vtop(spg) >> PTSHIFT < init_ram_pages);
-    ASSERT(pd != init_page_dir);
-
-    pte = lookup_page(pd, upage, true);
-
-    if (pte != NULL) {
-        ASSERT((*pte & PTE_P) == 0);
-        *pte = (uint32_t) spg;
-        return true;
-    }
-    else {
-        return false;
-    }
-}
-
-
 
 /*! Looks up the physical address that corresponds to user virtual address
     UADDR in PD.  Returns the kernel virtual address corresponding to that
