@@ -42,6 +42,7 @@ void init_supp_page_table(void); /* Initializes supplemental page table. */
 struct frame *page_to_new_frame(void *vaddr); /* Returns valid frame with vaddr expected data. */
 
 /* Functions to create/remove pages in supplemental page table. */
+struct supp_page* get_supp_page(void* vaddr);
 int free_supp_page(struct supp_page *spg); /* Removes page from table. */
 struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable);
 struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, struct swap_slot *swap, bool writable);

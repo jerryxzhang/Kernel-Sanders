@@ -700,13 +700,16 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         struct supp_page *spg = create_filesys_page(\
 				upage, thread_current()->pagedir, new_fr,\
 				file, total_ofs, page_read_bytes, writable);
+        new_fr->page = spg;
 		if (!spg) {
+            frame_free(new_fr);
 			free_supp_page(spg);
 			return false;
 		}
         
         /* Add the page to the process's address space. */
         if (!install_page(upage, new_fr->phys_addr, writable)) {
+            frame_free(new_fr);
             free_supp_page(spg);
             return false; 
         }
@@ -730,6 +733,7 @@ static bool setup_stack(void **esp) {
 
     void *upage = (void *)(PHYS_BASE - PGSIZE);
     new_fr = frame_create(PAL_USER | PAL_ZERO);
+    new_fr->page = get_supp_page(upage);
     kpage = new_fr->phys_addr;
     if (kpage != NULL) {
         success = install_page(upage, kpage, true);

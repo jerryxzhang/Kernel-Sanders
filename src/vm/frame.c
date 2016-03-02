@@ -110,8 +110,24 @@ int frame_free(struct frame *fr) {
  *  @return a pointer to the frame whose page should be evicted.
  */
 struct frame *frame_choose_victim(void) {
-	/*! TODO: Make this better.  Currently always chooses the first page. */
-	return list_entry(list_begin(&frame_table), struct frame, frame_elem);
+    // Implements second chance FIFO
+    while(1) {
+	    struct list_elem* cur = list_pop_front(&frame_table);
+        struct frame *cur_frame = list_entry(cur, struct frame, frame_elem);
+        struct supp_page *cur_page = cur_frame->page;
+
+        // If the frame has been accessed, give it a second chance by putting 
+        // it back in the queue with access bit reset
+        if (pagedir_is_accessed(cur_page->pd, cur_frame->phys_addr) ||
+                pagedir_is_accessed(cur_page->pd, cur_page->vaddr)) {
+            pagedir_set_accessed(cur_page->pd, cur_frame->phys_addr, false);
+            pagedir_set_accessed(cur_page->pd, cur_page->vaddr, false);
+            list_push_back(&frame_table, cur);
+        } else {
+            // Otherwise the frame has already been removed so return it
+            return cur_frame;
+        }
+    }
 }
 
 

@@ -3,7 +3,6 @@
  *  Contains methods for supplementary pages.
  */
 
-
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -30,13 +29,7 @@
 #include "page.h"
 #include "swap.h"
 
-
-
-
-struct supp_page *get_supp_page(void *vaddr); /* Returns physical address of page. */
 bool valid_page_data(void *vaddr); /* Returns true if page holds valid data. */
-
-
 
 /*! init_supp_page_table
  *  
@@ -46,8 +39,6 @@ void init_supp_page_table(void) {
 	/* Initialize the list. */
 	list_init(&supp_page_table);
 }
-
-
 
 /*! locate_page
  * 
@@ -77,8 +68,6 @@ struct supp_page *get_supp_page(void *vaddr) {
 	return spg;
 }
 
-
-
 /*! valid_page_data
  * 
  *  @description Returns whether the page with argued virtual address has valid
@@ -97,8 +86,6 @@ bool valid_page_data(void *vaddr) {
 		return (spg->type == kernel ? false : true);
 	return false;
 }
-
-
 
 /*! page_to_new_frame
  * 
@@ -122,6 +109,7 @@ struct frame *page_to_new_frame(void *vaddr) {
 		
 	/* Create a new frame to load vaddr's data into. */
 	struct frame *new_frame = frame_create(PAL_USER);
+    new_frame->page = spg;
 	
 	/* Populate new frame based on what vaddr supposedly pointed to. */
 	switch (spg->type) {
@@ -154,9 +142,6 @@ struct frame *page_to_new_frame(void *vaddr) {
 	return new_frame;
 }
 
-
-
-
 /*! remove_page
  * 
  *  @description Removes a page from the supplemental page table and frees
@@ -171,9 +156,6 @@ int free_supp_page(struct supp_page *spg) {
 	free_supp_page(spg);
 	return 0;
 }
-
-
-
 
 /*! create_filesys_page
  * 
@@ -210,9 +192,6 @@ struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *f
 	
 	return new_page;
 }
-
-
-
 
 struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, struct swap_slot *swap, bool writable) {
 	/* Create and populate the page. */
