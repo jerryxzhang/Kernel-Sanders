@@ -21,6 +21,8 @@ int getArg(int argnum, struct intr_frame *f);
    for reading, so only need to call w_valid().
  */
 
+bool in_sc;
+
 static bool r_valid(uint8_t *uaddr);
 static bool w_valid(uint8_t *uaddr);
 static struct lock filesys_lock;
@@ -31,11 +33,19 @@ static struct file* open_files[MAX_GLOBAL_FILES];
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
     lock_init(&filesys_lock);
+    in_sc = false;
 }
 
+bool in_syscall(void) {
+    return in_sc;
+}
 
 static void syscall_handler(struct intr_frame *f) {
     if (!w_valid(f->esp)) thread_exit(-1);
+
+    in_sc = true;
+
+    thread_current()->esp = f->esp;
 
     int syscall_num = getArg(0, f);
     
@@ -229,6 +239,7 @@ static void syscall_handler(struct intr_frame *f) {
             thread_exit(-1);
             break;
     }
+    in_sc = false;
 }
 
 int getArg(int argnum, struct intr_frame *f) {

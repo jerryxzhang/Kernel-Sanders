@@ -135,6 +135,9 @@ struct thread {
     /**@{*/
 #endif
 
+    /** Needed for stack growth through a system call. */
+    void* esp;                          /*!< Thread's stack pointer. */
+
     /*! Owned by thread.c. */
     /**@{*/
     unsigned magic;                     /* Detects stack overflow. */

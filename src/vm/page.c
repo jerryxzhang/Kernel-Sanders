@@ -163,7 +163,6 @@ int free_supp_page(struct supp_page *spg) {
  *  comes from a file.
  * 
  *  @param vaddr - pointer to virtual page
- *  @param type - the type of location the data comes from
  *  @param file - pointer to the file data is being read from
  *  @param offset - offset in the file the data is read from
  *  @param bytes - number of bytes written from file
@@ -193,7 +192,16 @@ struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *f
 	return new_page;
 }
 
-struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, struct swap_slot *swap, bool writable) {
+/*! create_swapslot_page
+ * 
+ *  @description Creates a page in the supplemental page table for a newly
+ *  allocated memory page that will be written back to swap.
+ * 
+ *  @param vaddr - pointer to virtual page
+ * 
+ *  @return a pointer to the supplemental page
+*/
+struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, bool writable) {
 	/* Create and populate the page. */
 	struct supp_page *new_page = (struct supp_page *)malloc(sizeof(struct supp_page));
 	new_page->fr = fr;
@@ -204,8 +212,6 @@ struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *
 	new_page->bytes = 0;
 	new_page->wr = writable;
 	new_page->pd = pd;
-	
-	new_page->swap = swap;
 	
 	/* Add page to table. */
 	list_push_back(&supp_page_table, &new_page->supp_page_elem);

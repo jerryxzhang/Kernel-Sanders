@@ -65,5 +65,7 @@ void process_exit(int code);
 void process_activate(void);
 struct process* process_current(void);
 
+bool install_page(void* upage, void*kpage, bool writable);
+
 #endif /* userprog/process.h */
 

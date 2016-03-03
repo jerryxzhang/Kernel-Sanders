@@ -63,8 +63,8 @@ struct frame *frame_create(int flags) {
 	
 	/* If couldn't get page, evict and try again. */
 	if (!kpage) {
-		//frame_evict();
-		//kpage = palloc_get_page(flags);
+		frame_evict();
+		kpage = palloc_get_page(flags);
 	}
 	
 	/* Create and update the frame struct so we can add it to our table. */

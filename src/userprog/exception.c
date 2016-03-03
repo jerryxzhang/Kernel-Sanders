@@ -2,9 +2,14 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/process.h"
+#include "userprog/syscall.h"
 #include "threads/interrupt.h"
+#include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/page.h"
+
 
 /*! Number of page faults processed. */
 static long long page_fault_cnt;
@@ -123,8 +128,6 @@ static void page_fault(struct intr_frame *f) {
        [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception (#PF)". */
     asm ("movl %%cr2, %0" : "=r" (fault_addr));
     
-    page_to_new_frame(fault_addr);
-	
     /* Turn interrupts back on (they were only off so that we could
        be assured of reading CR2 before it changed). */
     intr_enable();
@@ -137,9 +140,24 @@ static void page_fault(struct intr_frame *f) {
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
 
-    /* To implement virtual memory, delete the rest of the function
-       body, and replace it with code that brings in the page to
-       which fault_addr refers. */
+    void* esp = in_syscall() ? thread_current()->esp : f->esp;
+
+    if (page_to_new_frame(fault_addr)) {
+        printf("User page successfully paged in! %x\n", fault_addr);
+        return;
+    } else if ((uint32_t) fault_addr > ((uint32_t) esp) - 64  
+            && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
+        
+        struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
+        void *upage = (void*) ((uint32_t) fault_addr & ~PGMASK);
+        new_fr->page = create_swapslot_page(upage, 
+                thread_current()->pagedir, new_fr, true);
+        uint8_t *kpage = new_fr->phys_addr;
+
+        install_page(upage, kpage, true);
+        return;                
+    }
+
     if (user){
       kill(f);
     } 
