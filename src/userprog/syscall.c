@@ -10,6 +10,19 @@
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 
+#ifdef VM
+#include "vm/page.h"
+#define MAX_GLOBAL_MAPPINGS MAX_PROCESSES * 4
+
+struct mmapping {
+    void* addr;
+    struct file *file;
+};
+
+static struct mmapping all_mmappings[MAX_GLOBAL_MAPPINGS];
+static struct lock mmap_lock;
+#endif
+
 #define MAX_GLOBAL_FILES MAX_PROCESSES * 4
 
 static void syscall_handler(struct intr_frame *);
@@ -33,6 +46,9 @@ static struct file* open_files[MAX_GLOBAL_FILES];
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
     lock_init(&filesys_lock);
+    #ifdef VM
+    lock_init(&mmap_lock);
+    #endif
     in_sc = false;
 }
 
@@ -103,13 +119,13 @@ static void syscall_handler(struct intr_frame *f) {
             while (process_slot < MAX_FILES && files[process_slot] != -1)
                 process_slot++;
             if (process_slot == MAX_FILES)
-                goto fail;
+                goto open_fail;
             while (global_slot < MAX_GLOBAL_FILES && 
                 open_files[global_slot] != NULL)
                 global_slot++;
             if (global_slot == MAX_GLOBAL_FILES)
                 //can't have more open files
-                goto fail;
+                goto open_fail;
             
             new_file = filesys_open(file);
             if (new_file != NULL) {
@@ -118,7 +134,7 @@ static void syscall_handler(struct intr_frame *f) {
                 f->eax = process_slot;
                 goto done;
             }
-            fail:
+            open_fail:
             f->eax = -1;
             done:
             lock_release(&filesys_lock);
@@ -234,6 +250,85 @@ static void syscall_handler(struct intr_frame *f) {
             }
             break;
         }
+        #ifdef VM
+        case SYS_MMAP:{
+            int fd = (int) getArg(1, f);
+            void *addr = (void *) getArg(2, f);
+            int index;
+            off_t file_size;
+            struct file *handle;
+            int num_pages;
+            struct process *cur_proc = process_current();
+            mapid_t id;
+            mapid_t slot;
+            uint32_t *pd;
+            if ((off_t)addr % PGSIZE)
+                goto map_fail;
+            if (fd >= 0 && fd < MAX_FILES) {
+                lock_acquire(&mmap_lock);
+                for (id = 0; id < MAX_MMAPPINGS; id++){
+                    if(cur_proc->mmappings[id] == -1)
+                        break;
+                }
+                if (id == MAX_MMAPPINGS){
+                    lock_release(&mmap_lock);
+                    goto map_fail;
+                }
+                for (slot = 0; slot < MAX_GLOBAL_MAPPINGS; slot++){
+                    if (all_mmappings[slot].file)
+                        break;
+                }
+                if (slot == MAX_GLOBAL_MAPPINGS){
+                    lock_release(&mmap_lock);
+                    goto map_fail;
+                }
+                lock_acquire(&filesys_lock);
+                index = cur_proc->files[fd];
+                if (index == -1){
+                    lock_release(&filesys_lock);
+                    lock_release(&mmap_lock);
+                    goto map_fail;
+                }
+                handle = open_files[index];
+                file_size = file_length(handle);
+                if (file_size == 0){
+                    lock_release(&filesys_lock);
+                    lock_release(&mmap_lock);
+                    goto map_fail;
+                }
+                num_pages = (file_size - 1) / PGSIZE + 1;
+                for (index = 0; index < num_pages; index++){
+                    if(get_supp_page((void*)((off_t)addr + PGSIZE * index))){
+                        lock_release(&filesys_lock);
+                        lock_release(&mmap_lock);
+                        goto map_fail;
+                    }
+                }
+                all_mmappings[slot].file = file_reopen(handle);
+                lock_release(&filesys_lock);
+                all_mmappings[slot].addr = addr;
+                pd = thread_current()->pagedir;
+                for (index = 0; index < num_pages - 1; index++){
+                    create_filesys_page((void*)((off_t)addr + PGSIZE * index),
+                        pd, NULL, handle, index * PGSIZE, PGSIZE, true);
+                }
+                create_filesys_page((void*)((off_t)addr + PGSIZE * index),
+                        pd, NULL, handle, index * PGSIZE, (off_t)addr %
+                        PGSIZE, true);
+                cur_proc->mmappings[id] = slot;
+                lock_release(&mmap_lock);
+                f->eax = id;
+                break;
+            }
+            map_fail:
+            f->eax = -1;
+            break;
+
+        }
+        case SYS_MUNMAP:{
+
+        }
+        #endif
         default:
             printf("Not implemented!\n");
             thread_exit(-1);

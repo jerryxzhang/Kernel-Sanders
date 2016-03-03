@@ -92,6 +92,10 @@ pid_t process_table_get(void) {
     for (i = 0; i < MAX_FILES; i++) {
         p->files[i] = -1;
     }
+
+    for (i = 0; i < MAX_MMAPPINGS; i++) {
+        p->mmappings[i] = -1;
+    }
     
     intr_set_level(old_level);
     

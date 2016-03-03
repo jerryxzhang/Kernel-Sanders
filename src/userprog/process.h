@@ -10,6 +10,7 @@
 #define MAX_ARGS 100
 #define INIT_PID 0
 #define MAX_FILES 20
+#define MAX_MMAPPINGS 20
 
 /** A single element in the system process table. */
 struct process {
@@ -24,8 +25,11 @@ struct process {
     pid_t pid;
     pid_t parent_pid; /** -1 if parent has died. */
 
-    /** A list of pointers to open files **/
+    /** An array of pointers to open files **/
     int files[MAX_FILES];
+
+    /** An array of pointers to mmapings **/
+    int mmappings[MAX_MMAPPINGS];
 
     /** A pointer to this process's executable. */
     struct file* file;
