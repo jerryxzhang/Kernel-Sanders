@@ -308,7 +308,7 @@ mapid_t mmap(int fd, void *addr){
         return MAP_FAILED;
 
     lock_acquire(&mmap_lock);
-    cur_proc = process_current;
+    cur_proc = process_current();
     mappings = cur_proc->mmappings;
     while (mapping < MAX_MMAPPINGS && mappings[mapping] != -1)
         mapping++;
@@ -331,7 +331,7 @@ mapid_t mmap(int fd, void *addr){
         lock_release(&mmap_lock);
         return MAP_FAILED;
     }
-    handle = open_files[index];
+    handle = open_files[index];;
     file_size = file_length(handle);
     if (file_size == 0){
         lock_release(&filesys_lock);
@@ -347,7 +347,8 @@ mapid_t mmap(int fd, void *addr){
             return MAP_FAILED;
         }
     }
-    all_mmappings[slot].file = file_reopen(handle);
+    handle = file_reopen(handle);
+    all_mmappings[slot].file = handle;
     lock_release(&filesys_lock);
     all_mmappings[slot].addr = addr;
     pd = thread_current()->pagedir;
@@ -361,20 +362,6 @@ mapid_t mmap(int fd, void *addr){
 }
 
 void munmap(mapid_t mapping){
-    // int index;
-    // off_t file_size;
-    // struct file *handle;
-    // int num_pages;
-    // off_t it;
-    // struct process *cur_proc;
-    // mapid_t mapping = 0;
-    // int *mappings;
-    // mapid_t slot = 0;
-    // uint32_t *pd;
-    // struct hash *supp_table;
-    if (mapping >= MAX_MMAPPINGS)
-        return;
-
 }
 
 int getArg(int argnum, struct intr_frame *f) {
