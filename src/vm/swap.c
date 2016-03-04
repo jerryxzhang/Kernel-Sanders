@@ -3,7 +3,6 @@
  *  Contains methods for using the swap table. 
  */
 
-
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -30,17 +29,20 @@
 #include "page.h"
 #include "swap.h"
 
-
-
 struct block *swap_table;
 struct swap_slot *swap_slots;
 
-
-
-
 struct swap_slot *swap_find_empty(void); /* Finds empty page in swap table. */
 
+block_sector_t block_sector_num(int swap_index);
 
+/**
+ * For the given swap index, find the start position of
+ * memory on the swap device.
+ */
+block_sector_t block_sector_num(int swap_index) {
+    return (PGSIZE / BLOCK_SECTOR_SIZE) * swap_index;
+}
 
 /*! init_swap_table
  *  
@@ -52,23 +54,19 @@ void init_swap_table (void) {
 	
 	/* Create an array of slots so we can easily find free slots.  We want
 	 * one entry in the array for every page in the swap block. */
-	int num_slots = block_size(swap_table) * sizeof(block_sector_t) / PGSIZE;
+	int num_slots = block_size(swap_table) * BLOCK_SECTOR_SIZE / PGSIZE;
 	swap_slots = (struct swap_slot *)malloc(num_slots * sizeof(struct swap_slot));
-	
+    
+    printf("Swap initialized with %d slots\n", num_slots);
 	/* Initialize swap array.  Each successive element in the array points
 	 * to the next entry in the swap table, each of which are separated by
 	 * PGSIZE.  No swap entries should be in_use at this point. */
-	void *curr_swap = swap_table;
 	int i;
 	for (i = 0; i < num_slots; i++) {
-		swap_slots[i].addr = curr_swap;
+		swap_slots[i].slot_num = i;
 		swap_slots[i].in_use = false;
-		curr_swap += PGSIZE;
 	}
 }
-
-
-
 
 /*! swap_find_empty
  * 
@@ -78,7 +76,7 @@ void init_swap_table (void) {
  */
 struct swap_slot *swap_find_empty(void) {
 	/* Calculate number of swaps so we know how much to iterate. */
-	int num_swaps = block_size(swap_table) * sizeof(block_sector_t) / PGSIZE;
+	int num_swaps = block_size(swap_table) * BLOCK_SECTOR_SIZE / PGSIZE;
 	
 	/* Iterate over array to see if there are any free swaps.  Return first
 	 * one we find because they are all the same size, so there is no chance
@@ -86,15 +84,15 @@ struct swap_slot *swap_find_empty(void) {
 	int i;
 	for (i = 0; i < num_swaps; i++) {
 		/* Attribute in_use false if the slot is free. */
-		if (!swap_slots[i].in_use)
-			return &swap_slots[i];
-	}
-	
+		if (!swap_slots[i].in_use) {
+            printf("Allocated empty swap %d\n", i);
+			swap_slots[i].in_use = true;
+            return &swap_slots[i];
+        }
+	}	
 	/* If here, found no empty swaps. */
 	return NULL;
 }
-
-
 
 /*! swap_remove_page
  * 
@@ -109,8 +107,6 @@ void swap_remove_page(struct swap_slot *swap) {
 	/* Mark page as unused. */
 	swap->in_use = false;
 }
-
-
 
 /*! swap_retrieve_page
  * 
@@ -127,16 +123,17 @@ void swap_remove_page(struct swap_slot *swap) {
 int swap_retrieve_page(void *dest, struct swap_slot *swap) {
 	ASSERT (swap != NULL);
 	
-	/* Mark slot as unused. */
-	swap_remove_page(swap);
-	
 	/* Copy the page's contents. */
-	if (memcpy(dest, swap->addr, PGSIZE))
-		return PGSIZE;
-	return 0;
+    int i;
+    for (i = 0; i < PGSIZE / BLOCK_SECTOR_SIZE; i++) {
+        block_read(swap_table, block_sector_num(swap->slot_num) + i, dest + BLOCK_SECTOR_SIZE * i);
+    }
+
+    /* Mark slot as unused. */
+	swap_remove_page(swap);
+
+	return PGSIZE;
 }
-
-
 
 /*! swap_put_page
  * 
@@ -150,11 +147,15 @@ int swap_retrieve_page(void *dest, struct swap_slot *swap) {
  */
 struct swap_slot *swap_put_page (void *addr) {
 	/* Find a place in the swap block to put the page. */
-	void *swap_page = swap_find_empty();
+	struct swap_slot *swap_page = swap_find_empty();
+    ASSERT(swap_page);
 	
 	/* Copy the contents of the page into the swap if address valid. */
-	if (swap_page)
-		memcpy(swap_page, addr, PGSIZE);
-	
+    int i;
+    for (i = 0; i < PGSIZE / BLOCK_SECTOR_SIZE; i++) {
+        block_write(swap_table, block_sector_num(swap_page->slot_num) + i, addr + BLOCK_SECTOR_SIZE * i);
+    }
+
 	return swap_page;
 }
+

@@ -97,6 +97,8 @@ pid_t process_table_get(void) {
         p->mmappings[i] = -1;
     }
     
+    init_supp_page_table(&p->supp_page_table);
+
     intr_set_level(old_level);
     
     return p->pid;
@@ -111,6 +113,7 @@ void process_table_free(struct process *p) {
 
     p->valid = false;
     list_remove(&p->elem);
+    free_supp_page_table(&p->supp_page_table);
 
     list_push_back(&free_list, &p->elem);
 }
@@ -223,7 +226,6 @@ static void start_process(void *file_name_) {
     /* file_name now has a NULL character after file name. */
     success = load(file_name, &if_.eip, &if_.esp);
     strlcpy(process_table[pid].name, file_name, MAX_NAME_LEN);
-    
     process_table[pid].running = true;
     enum intr_level old_level = intr_disable();
     process_table[pid].load_success = success;
@@ -679,6 +681,8 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT(pg_ofs(upage) == 0);
     ASSERT(ofs % PGSIZE == 0);
 
+    printf("LOCAING SEGMENT\n");
+
     file_seek(file, ofs);
     int total_ofs = ofs;
     while (read_bytes > 0 || zero_bytes > 0) {
@@ -689,6 +693,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         /* Load this page. */
+        printf("MEHHHH\n");
         struct frame *new_fr = frame_create(PAL_USER);
         if (file_read(file, new_fr->phys_addr, page_read_bytes) != (int) page_read_bytes) {
             frame_free(new_fr);
@@ -697,20 +702,22 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         memset(new_fr->phys_addr + page_read_bytes, 0, page_zero_bytes);
 
         /* Get a page of memory. */
-        struct supp_page *spg = create_filesys_page(\
-				upage, thread_current()->pagedir, new_fr,\
+        struct supp_page *spg = create_filesys_page(
+                &process_current()->supp_page_table, upage, 
+                thread_current()->pagedir, new_fr,
 				file, total_ofs, page_read_bytes, writable);
         new_fr->page = spg;
+        printf("dEHHHH\n");
 		if (!spg) {
             frame_free(new_fr);
-			free_supp_page(spg);
+			free_supp_page(&process_current()->supp_page_table, spg);
 			return false;
 		}
         
         /* Add the page to the process's address space. */
         if (!install_page(upage, new_fr->phys_addr, writable)) {
             frame_free(new_fr);
-            free_supp_page(spg);
+            free_supp_page(&process_current()->supp_page_table, spg);
             return false; 
         }
 
@@ -730,11 +737,13 @@ static bool setup_stack(void **esp) {
 	struct frame *new_fr;
     uint8_t *kpage;
     bool success = false;
-
+    printf("SETTUIGN UP STACK\n");
     void *upage = (void *)(PHYS_BASE - PGSIZE);
+    
     new_fr = frame_create(PAL_USER | PAL_ZERO);
-    new_fr->page = create_swapslot_page(upage, thread_current()->pagedir,
-          new_fr, true);
+    new_fr->page = create_swapslot_page(
+            &process_current()->supp_page_table, upage, 
+            thread_current()->pagedir, new_fr, true);
 
     kpage = new_fr->phys_addr;
     if (kpage != NULL) {
@@ -744,6 +753,7 @@ static bool setup_stack(void **esp) {
         else
             frame_free(new_fr);
     }
+    printf("done SETTUIGN UP STACK\n");
     return success;
 }
 

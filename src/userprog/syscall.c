@@ -298,7 +298,8 @@ static void syscall_handler(struct intr_frame *f) {
                 }
                 num_pages = (file_size - 1) / PGSIZE + 1;
                 for (index = 0; index < num_pages; index++){
-                    if(get_supp_page((void*)((off_t)addr + PGSIZE * index))){
+                    if(get_supp_page(&process_current()->supp_page_table, 
+                                (void*)((off_t)addr + PGSIZE * index))){
                         lock_release(&filesys_lock);
                         lock_release(&mmap_lock);
                         goto map_fail;
@@ -309,10 +310,12 @@ static void syscall_handler(struct intr_frame *f) {
                 all_mmappings[slot].addr = addr;
                 pd = thread_current()->pagedir;
                 for (index = 0; index < num_pages - 1; index++){
-                    create_filesys_page((void*)((off_t)addr + PGSIZE * index),
+                    create_filesys_page(&process_current()->supp_page_table, 
+                            (void*)((off_t)addr + PGSIZE * index),
                         pd, NULL, handle, index * PGSIZE, PGSIZE, true);
                 }
-                create_filesys_page((void*)((off_t)addr + PGSIZE * index),
+                create_filesys_page(&process_current()->supp_page_table, 
+                        (void*)((off_t)addr + PGSIZE * index),
                         pd, NULL, handle, index * PGSIZE, (off_t)addr %
                         PGSIZE, true);
                 cur_proc->mmappings[id] = slot;

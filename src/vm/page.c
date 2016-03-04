@@ -24,20 +24,35 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
 #include "frame.h"
 #include "page.h"
 #include "swap.h"
 
-bool valid_page_data(void *vaddr); /* Returns true if page holds valid data. */
+bool valid_page_data(struct hash *table, void *vaddr); /* Returns true if page holds valid data. */
+struct supp_page *allocate_supp_page(struct hash *table, void *vaddr);
+
+bool less_func(const struct hash_elem *a, const struct hash_elem *b, void* aux UNUSED);
+unsigned hash_func(const struct hash_elem *e, void *aux UNUSED);
+
+
+bool less_func(const struct hash_elem *a, const struct hash_elem *b, void* aux UNUSED) {
+    return hash_entry(a, struct supp_page, elem)->vaddr < 
+        hash_entry(b, struct supp_page, elem)->vaddr;
+}
+
+unsigned hash_func(const struct hash_elem *e, void *aux UNUSED) {
+    return hash_int((int) hash_entry(e, struct supp_page, elem)->vaddr);
+}
 
 /*! init_supp_page_table
  *  
  *  @description Initializes the supplemental page table.
  */
-void init_supp_page_table(void) {
-	/* Initialize the list. */
-	list_init(&supp_page_table);
+void init_supp_page_table(struct hash *table) {
+    hash_init(table, &hash_func, &less_func, NULL /* aux */);
+}
+
+void free_supp_page_table(struct hash *table) {
 }
 
 /*! locate_page
@@ -46,26 +61,20 @@ void init_supp_page_table(void) {
  *  to have been accessed.  A pointer to the data is returned.  If the vaddr
  *  is an invalid pointer, NULL is returned.
  * 
- *  @param vaddr - Virtual address of a page
+ *  @param vaddr - User virtual address of a page
  * 
  *  @return pointer to supp page vaddr describes or NULL if it does not exist.
  */
-struct supp_page *get_supp_page(void *vaddr) {
-	/* Find page in supplemental page table. */
-	struct list_elem *e;
-	struct supp_page *spg = NULL;
-	for (e = list_begin(&supp_page_table); e != list_end(&supp_page_table); e = list_next(e)) {
-		spg = list_entry(e, struct supp_page, supp_page_elem);
-		ASSERT(spg != NULL);
-		
-		/* If address found, job is done. */
-		if (vaddr == spg->vaddr)
-			break;
-		else
-			spg = NULL; /* Otherwise, revert so we can check if pg found after. */
-	}
-	
-	return spg;
+struct supp_page *get_supp_page(struct hash *table, void *vaddr) {
+    struct supp_page p;
+    struct hash_elem *e;
+
+    ASSERT(is_user_vaddr(vaddr));
+    ASSERT(pg_ofs(vaddr) == 0);
+
+    p.vaddr = vaddr;
+    e = hash_find(table, &p.elem);
+    return e != NULL ? hash_entry(e, struct supp_page, elem) : NULL;
 }
 
 /*! valid_page_data
@@ -77,9 +86,9 @@ struct supp_page *get_supp_page(void *vaddr) {
  * 
  *  @return boolean that is true if page data valid, false otherwise.
  */
-bool valid_page_data(void *vaddr) {
+bool valid_page_data(struct hash *table, void *vaddr) {
 	/* Get the supplemental page from vaddr. */
-	struct supp_page *spg = get_supp_page(vaddr);
+	struct supp_page *spg = get_supp_page(table, vaddr);
 	
 	/* Determine whether data is valid. Obviously not if spg is NULL. */
 	if (spg)
@@ -96,19 +105,24 @@ bool valid_page_data(void *vaddr) {
  * 
  *  @return A pointer to the new frame or NULL if no frame obtained.
  */
-struct frame *page_to_new_frame(void *vaddr) {
+struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
+    ASSERT(is_user_vaddr(vaddr));
+    ASSERT(pg_ofs(vaddr) == 0);
+    
+    printf("GETTING %x\n", vaddr);
 	/* Make sure the address points to valid data. */
-	if (!valid_page_data(vaddr))
+	if (!valid_page_data(table, vaddr))
 		return NULL;
 	
 	/* Get supplemental page so we know where to look for vaddr data. */
-	struct supp_page *spg = get_supp_page(vaddr);
+	struct supp_page *spg = get_supp_page(table, vaddr);
 	
 	/* Probably no frame, but delete it just in case so we can replace it. */
 	frame_free(spg->fr);
-		
+    		
 	/* Create a new frame to load vaddr's data into. */
-	struct frame *new_frame = frame_create(PAL_USER);
+    printf("wtf\n");
+    struct frame *new_frame = frame_create(PAL_USER);
     new_frame->page = spg;
 	
 	/* Populate new frame based on what vaddr supposedly pointed to. */
@@ -151,10 +165,23 @@ struct frame *page_to_new_frame(void *vaddr) {
  * 
  *  @return 0 if successful, nonzero otherwise.
  */
-int free_supp_page(struct supp_page *spg) {
-	list_remove(&spg->supp_page_elem);
-	free_supp_page(spg);
+int free_supp_page(struct hash *table, struct supp_page *spg) {
+    ASSERT(get_supp_page(table, spg->vaddr) != NULL);
+
+    hash_delete(table, &spg->elem);
 	return 0;
+}
+
+struct supp_page *allocate_supp_page(struct hash *table, void *vaddr) {
+    ASSERT(is_user_vaddr(vaddr));
+    ASSERT(pg_ofs(vaddr) == 0);
+    ASSERT(get_supp_page(table, vaddr) == NULL);
+
+    struct supp_page *p = malloc(sizeof(struct supp_page));
+    p->vaddr = vaddr;
+
+    hash_insert(table, &p->elem);
+    return p;
 }
 
 /*! create_filesys_page
@@ -162,7 +189,7 @@ int free_supp_page(struct supp_page *spg) {
  *  @description Creates a page in the supplemental page table for data that
  *  comes from a file.
  * 
- *  @param vaddr - pointer to virtual page
+ *  @param vaddr - pointer to a user virtual page
  *  @param file - pointer to the file data is being read from
  *  @param offset - offset in the file the data is read from
  *  @param bytes - number of bytes written from file
@@ -170,11 +197,11 @@ int free_supp_page(struct supp_page *spg) {
  * 
  *  @return a pointer to the supplemental page
  */
-struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable) {
+struct supp_page *create_filesys_page(struct hash *table, void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable) {
 	ASSERT(file != NULL);
-	
+
 	/* Create and populate the page. */
-	struct supp_page *new_page = (struct supp_page *)malloc(sizeof(struct supp_page));
+	struct supp_page *new_page = allocate_supp_page(table, vaddr);
 	new_page->fr = fr;
 	new_page->type = filesys;
 	new_page->vaddr = vaddr;
@@ -186,9 +213,6 @@ struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *f
 	
 	new_page->swap = NULL;
 	
-	/* Add page to table. */
-	list_push_back(&supp_page_table, &new_page->supp_page_elem);
-	
 	return new_page;
 }
 
@@ -197,13 +221,13 @@ struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *f
  *  @description Creates a page in the supplemental page table for a newly
  *  allocated memory page that will be written back to swap.
  * 
- *  @param vaddr - pointer to virtual page
+ *  @param vaddr - pointer to user virtual page
  * 
  *  @return a pointer to the supplemental page
 */
-struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, bool writable) {
+struct supp_page *create_swapslot_page(struct hash *table, void *vaddr, uint32_t *pd, struct frame *fr, bool writable) {
 	/* Create and populate the page. */
-	struct supp_page *new_page = (struct supp_page *)malloc(sizeof(struct supp_page));
+	struct supp_page *new_page = allocate_supp_page(table, vaddr);
 	new_page->fr = fr;
 	new_page->type = swapslot;
 	new_page->vaddr = vaddr;
@@ -212,9 +236,6 @@ struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *
 	new_page->bytes = 0;
 	new_page->wr = writable;
 	new_page->pd = pd;
-	
-	/* Add page to table. */
-	list_push_back(&supp_page_table, &new_page->supp_page_elem);
 	
 	return new_page;
 }

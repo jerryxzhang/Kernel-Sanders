@@ -2,13 +2,12 @@
 #define VM_PAGE
 
 #include <list.h>
+#include <hash.h>
 
 #include "frame.h"
+#include "threads/vaddr.h"
 
-
-struct list supp_page_table;
-
-
+#define PAGE_TABLE_SIZE (((uint32_t) PHYS_BASE) >> 12)
 
 /* Type of place the page data can be found in. */
 enum page_location_type {
@@ -17,17 +16,16 @@ enum page_location_type {
 	kernel,
 };
 
-
 struct supp_page {
 	struct frame *fr; /* Frame this is in. */
 	uint32_t *pd; /* Pagedir associated with this page. */
 	void *vaddr; /* Virtual address of associated page. */
-	enum page_location_type type; /* Tells how to get page data. */
+    enum page_location_type type; /* Tells how to get page data. */
 	bool wr; /* True if the memory is writable.  False otherwise. */
 	
-	struct list_elem supp_page_elem; /* Element to put in lists. */
-	
-	/* Only useful for filesys type. */
+	struct hash_elem elem;
+    
+    /* Only useful for filesys type. */
 	struct file *fil; /* Pointer to file. */
 	int offset; /* Offset from file start to relevant data. */
 	int bytes; /* Number of bytes of relevant data. */
@@ -36,15 +34,14 @@ struct supp_page {
 	struct swap_slot *swap; /* Info about location of data in swap. */
 };
 
-
-
-void init_supp_page_table(void); /* Initializes supplemental page table. */
-struct frame *page_to_new_frame(void *vaddr); /* Returns valid frame with vaddr expected data. */
+void init_supp_page_table(struct hash *table); /* Initializes supplemental page table. */
+void free_supp_page_table(struct hash *table_addr);
+struct frame *page_to_new_frame(struct hash *table, void *vaddr); /* Returns valid frame with vaddr expected data. */
 
 /* Functions to create/remove pages in supplemental page table. */
-struct supp_page* get_supp_page(void* vaddr);
-int free_supp_page(struct supp_page *spg); /* Removes page from table. */
-struct supp_page *create_filesys_page(void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable);
-struct supp_page *create_swapslot_page(void *vaddr, uint32_t *pd, struct frame *fr, bool writable);
+struct supp_page* get_supp_page(struct hash *table, void* vaddr);
+int free_supp_page(struct hash * table, struct supp_page *spg); /* Removes page from table. */
+struct supp_page *create_filesys_page(struct hash *table, void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable);
+struct supp_page *create_swapslot_page(struct hash *table, void *vaddr, uint32_t *pd, struct frame *fr, bool writable);
 
 #endif // #ifndef VM_PAGE

@@ -2,6 +2,7 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
+#include "vm/page.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -30,6 +31,9 @@ struct process {
 
     /** An array of pointers to mmapings **/
     int mmappings[MAX_MMAPPINGS];
+
+    /** The process's supplemental page table. **/
+    struct hash supp_page_table;
 
     /** A pointer to this process's executable. */
     struct file* file;

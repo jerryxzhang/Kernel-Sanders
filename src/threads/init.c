@@ -140,7 +140,6 @@ int main(void) {
 #ifdef VM
 	/* Set up virtual memory. */
     init_frame_table();
-    init_supp_page_table();
     init_swap_table();
 #endif
 

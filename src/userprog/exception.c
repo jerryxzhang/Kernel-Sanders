@@ -139,18 +139,28 @@ static void page_fault(struct intr_frame *f) {
     not_present = (f->error_code & PF_P) == 0;
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
+    
+    // Access is kernel verifying an address
+    if (!user) {
+        printf("kernel fault\n");
+        f->eip = (void (*) (void)) f->eax;
+        f->eax = -1;
+        return;
+    }
 
     void* esp = in_syscall() ? thread_current()->esp : f->esp;
-
-    if (page_to_new_frame(fault_addr)) {
+    void *upage = (void*) ((uint32_t) fault_addr & ~PGMASK);
+    
+    printf("page faulted %x!\n", fault_addr);
+    if (page_to_new_frame(&process_current()->supp_page_table, upage)) {
         printf("User page successfully paged in! %x\n", fault_addr);
         return;
     } else if ((uint32_t) fault_addr > ((uint32_t) esp) - 64  
             && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
-        
+        printf("GROWING STACK\n"); 
         struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
-        void *upage = (void*) ((uint32_t) fault_addr & ~PGMASK);
-        new_fr->page = create_swapslot_page(upage, 
+        new_fr->page = create_swapslot_page(
+                &process_current()->supp_page_table, upage, 
                 thread_current()->pagedir, new_fr, true);
         uint8_t *kpage = new_fr->phys_addr;
 
@@ -158,12 +168,7 @@ static void page_fault(struct intr_frame *f) {
         return;                
     }
 
-    if (user){
-      kill(f);
-    } 
-    else {
-      f->eip = (void (*) (void)) f->eax;
-      f->eax = -1;
-    }
+    // Page doesn't exist and isn't a stack access, kill the process
+    kill(f);
 }
 
