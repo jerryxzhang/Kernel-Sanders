@@ -74,12 +74,14 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         case SYS_EXEC: {
             const char *cmd_line = (const char*) getArg(1, f);
-            lock_acquire(&filesys_lock);
-            if (r_valid((uint8_t *)cmd_line))
+            if (r_valid((uint8_t *)cmd_line)){
+                lock_acquire(&filesys_lock);
                 f->eax = (uint32_t) process_execute(cmd_line);
+                lock_release(&filesys_lock);
+            }  
             else
+                fail1:
                 f->eax = -1;
-            lock_release(&filesys_lock);
             break;
         }
         case SYS_WAIT:
@@ -141,7 +143,7 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         }
         case SYS_FILESIZE: {
-            int fd = (int) getArg(1, f);
+            int fd = getArg(1, f);
             int index;
             if (fd >= 0 && fd < MAX_FILES) {
                 lock_acquire(&filesys_lock);
@@ -157,7 +159,7 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         }
         case SYS_READ:{
-            int fd = (int) getArg(1, f);
+            int fd = getArg(1, f);
             void *buffer = (void *) getArg(2, f);
             off_t size = (off_t) getArg(3, f);
             int index;
@@ -179,7 +181,7 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         }
         case SYS_WRITE:{
-            int fd = (int) getArg(1, f);
+            int fd = getArg(1, f);
             void *buffer = (void *) getArg(2, f);
             off_t size = (off_t) getArg(3, f);
             int index;
@@ -207,7 +209,7 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         }
         case SYS_SEEK:{
-            int fd = (int) getArg(1, f);
+            int fd = getArg(1, f);
             off_t pos = (off_t) getArg(2, f);
             int index;
             if (fd >= 0 && fd < MAX_FILES) {
@@ -220,7 +222,7 @@ static void syscall_handler(struct intr_frame *f) {
             break;
         }
         case SYS_TELL:{
-            int fd = (int) getArg(1, f);
+            int fd = getArg(1, f);
             int index;
             if (fd >= 0 && fd < MAX_FILES) {
                 lock_acquire(&filesys_lock);
@@ -252,80 +254,91 @@ static void syscall_handler(struct intr_frame *f) {
         }
         #ifdef VM
         case SYS_MMAP:{
-            int fd = (int) getArg(1, f);
+            int fd = getArg(1, f);
             void *addr = (void *) getArg(2, f);
             int index;
             off_t file_size;
             struct file *handle;
             int num_pages;
+            off_t it;
             struct process *cur_proc = process_current();
             mapid_t id;
             mapid_t slot;
             uint32_t *pd;
-            if ((off_t)addr % PGSIZE)
-                goto map_fail;
-            if (fd >= 0 && fd < MAX_FILES) {
-                lock_acquire(&mmap_lock);
-                for (id = 0; id < MAX_MMAPPINGS; id++){
-                    if(cur_proc->mmappings[id] == -1)
-                        break;
-                }
-                if (id == MAX_MMAPPINGS){
-                    lock_release(&mmap_lock);
-                    goto map_fail;
-                }
-                for (slot = 0; slot < MAX_GLOBAL_MAPPINGS; slot++){
-                    if (all_mmappings[slot].file)
-                        break;
-                }
-                if (slot == MAX_GLOBAL_MAPPINGS){
-                    lock_release(&mmap_lock);
-                    goto map_fail;
-                }
-                lock_acquire(&filesys_lock);
-                index = cur_proc->files[fd];
-                if (index == -1){
-                    lock_release(&filesys_lock);
-                    lock_release(&mmap_lock);
-                    goto map_fail;
-                }
-                handle = open_files[index];
-                file_size = file_length(handle);
-                if (file_size == 0){
-                    lock_release(&filesys_lock);
-                    lock_release(&mmap_lock);
-                    goto map_fail;
-                }
-                num_pages = (file_size - 1) / PGSIZE + 1;
-                for (index = 0; index < num_pages; index++){
-                    if(get_supp_page((void*)((off_t)addr + PGSIZE * index))){
-                        lock_release(&filesys_lock);
-                        lock_release(&mmap_lock);
-                        goto map_fail;
-                    }
-                }
-                all_mmappings[slot].file = file_reopen(handle);
-                lock_release(&filesys_lock);
-                all_mmappings[slot].addr = addr;
-                pd = thread_current()->pagedir;
-                for (index = 0; index < num_pages - 1; index++){
-                    create_filesys_page((void*)((off_t)addr + PGSIZE * index),
-                        pd, NULL, handle, index * PGSIZE, PGSIZE, true);
-                }
-                create_filesys_page((void*)((off_t)addr + PGSIZE * index),
-                        pd, NULL, handle, index * PGSIZE, (off_t)addr %
-                        PGSIZE, true);
-                cur_proc->mmappings[id] = slot;
-                lock_release(&mmap_lock);
-                f->eax = id;
-                break;
+            if ((off_t)addr % PGSIZE || fd < 0 || fd >= MAX_FILES)
+                goto fail1;
+            lock_acquire(&mmap_lock);
+            for (id = 0; id < MAX_MMAPPINGS; id++){
+                if(cur_proc->mmappings[id] == -1)
+                    break;
             }
-            map_fail:
-            f->eax = -1;
-            break;
+            if (id == MAX_MMAPPINGS){
+                map_fail2:
+                lock_release(&mmap_lock);
+                goto fail1;
+            }
+            for (slot = 0; slot < MAX_GLOBAL_MAPPINGS; slot++){
+                if (all_mmappings[slot].file)
+                    break;
+            }
+            if (slot == MAX_GLOBAL_MAPPINGS)
+                goto map_fail2;
+            lock_acquire(&filesys_lock);
+            index = cur_proc->files[fd];
+            if (index == -1){
+                map_fail3:
+                lock_release(&filesys_lock);
+                goto map_fail2;
+            }
+            handle = open_files[index];
+            file_size = file_length(handle);
+            if (file_size == 0)
+                goto map_fail3;
+            num_pages = (file_size - 1) / PGSIZE + 1;
+            for (it = (off_t)addr; it < (off_t)addr + file_size; it += PGSIZE){
 
+                if(get_supp_page((void*)it) || !w_valid((uint8_t*)it))
+                    goto map_fail3;
+            }
+            all_mmappings[slot].file = file_reopen(handle);
+            lock_release(&filesys_lock);
+            all_mmappings[slot].addr = addr;
+            pd = thread_current()->pagedir;
+            for (index = 0; index < num_pages - 1; index++){
+                create_filesys_page((void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
+            }
+            create_filesys_page((void*)((off_t)addr + PGSIZE * index),pd, 
+                NULL, handle, index * PGSIZE, (off_t)addr % PGSIZE, true);
+            cur_proc->mmappings[id] = slot;
+            lock_release(&mmap_lock);
+            f->eax = id;
+            break;
         }
         case SYS_MUNMAP:{
+            mapid_t mapping = (mapid_t)getArg(1, f);
+            void *addr;
+            int index;
+            off_t file_size;
+            struct file *handle;
+            int num_pages;
+            off_t it;
+            struct process *cur_proc = process_current();
+            mapid_t id;
+            mapid_t slot;
+            uint32_t *pd;
+            lock_acquire(&mmap_lock);
+            if (mapping >= MAX_MMAPPINGS){
+                lock_release(&mmap_lock);
+                thread_exit(-1);
+            }
+            slot = cur_proc->mmappings[mapping];
+            if (slot < 0 || slot >= MAX_GLOBAL_MAPPINGS || !all_mmappings[slot].addr){
+                lock_release(&mmap_lock);
+                thread_exit(-1);
+            }
+            lock_acquire(&filesys_lock);
+
+
 
         }
         #endif
