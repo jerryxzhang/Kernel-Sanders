@@ -362,7 +362,42 @@ mapid_t mmap(int fd, void *addr){
 }
 
 void munmap(mapid_t mapping){
+    int index;
+    struct process *cur_proc;
+    struct mmapping mm;
+    off_t file_size;
+    off_t i;
+    struct hash *supp_table;
+
+    if (mapping >= 0 && mapping < MAX_MMAPPINGS) {
+        cur_proc = process_current();
+        lock_acquire(&mmap_lock);
+        index = cur_proc->mmappings[mapping];
+        if (index != -1) {
+            mm = all_mmappings[index];
+            all_mmappings[index] = (struct mmapping){NULL,NULL};
+            cur_proc->mmappings[mapping] = -1;
+            lock_release(&mmap_lock);
+
+            lock_acquire(&filesys_lock);
+            file_size = file_length(mm.file);
+            file_close(mm.file);
+            lock_release(&filesys_lock);
+            supp_table = &process_current()->supp_page_table;
+            for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size; i += PGSIZE){
+                free_supp_page(supp_table, get_supp_page(supp_table, (void*)i));
+            }
+            
+            
+        }
+        else
+            lock_release(&mmap_lock);
+    }
+            
 }
+        
+
+
 
 int getArg(int argnum, struct intr_frame *f) {
     int* addr = (int*) f->esp + argnum;
