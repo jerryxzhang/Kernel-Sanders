@@ -6,7 +6,6 @@
 #include "filesys/file.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
-#include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 
@@ -67,280 +66,54 @@ static void syscall_handler(struct intr_frame *f) {
     
     switch(syscall_num) {
         case SYS_HALT:
-            shutdown_power_off();
+            halt();
             break;
         case SYS_EXIT:
-            thread_exit((int) getArg(1, f));
+            exit((int) getArg(1, f));
             break;
-        case SYS_EXEC: {
-            const char *cmd_line = (const char*) getArg(1, f);
-            if (r_valid((uint8_t *)cmd_line)){
-                lock_acquire(&filesys_lock);
-                f->eax = (uint32_t) process_execute(cmd_line);
-                lock_release(&filesys_lock);
-            }  
-            else
-                fail1:
-                f->eax = -1;
-            break;
-        }
+        case SYS_EXEC: 
+            f->eax = exec((const char*) getArg(1, f));
+            break; 
         case SYS_WAIT:
-            f->eax = (uint32_t) process_wait((int) getArg(1, f));
+            f->eax = wait((pid_t) getArg(1, f));
             break;
-        case SYS_CREATE: {
-            const char *file = (const char*) getArg(1, f);
-            lock_acquire(&filesys_lock);
-            if (r_valid((uint8_t *)file))
-                f->eax = filesys_create(file, (off_t) getArg(2, f));
-            else
-                thread_exit(-1);
-            lock_release(&filesys_lock);
+        case SYS_CREATE:
+            f->eax = create((const char*) getArg(1, f), 
+                (unsigned) getArg(2, f));       
             break;
-        }
-        case SYS_REMOVE: {
-            const char *file = (const char*) getArg(1, f);
-            lock_acquire(&filesys_lock);
-            if (r_valid((uint8_t *)file))
-                f->eax = filesys_remove(file);
-            else
-                thread_exit(-1);
-            lock_release(&filesys_lock);
+        case SYS_REMOVE:
+            f->eax = remove((const char*) getArg(1, f));       
             break;
-        }
-        case SYS_OPEN: {
-            int* files = process_current()->files;
-            int process_slot = 2;
-            int global_slot = 0;
-            struct file* new_file;
-            const char *file = (const char*) getArg(1, f);
-            if (!r_valid((uint8_t *)file)){
-                thread_exit(-1);
-                break;
-            }
-            lock_acquire(&filesys_lock);
-            while (process_slot < MAX_FILES && files[process_slot] != -1)
-                process_slot++;
-            if (process_slot == MAX_FILES)
-                goto open_fail;
-            while (global_slot < MAX_GLOBAL_FILES && 
-                open_files[global_slot] != NULL)
-                global_slot++;
-            if (global_slot == MAX_GLOBAL_FILES)
-                //can't have more open files
-                goto open_fail;
-            
-            new_file = filesys_open(file);
-            if (new_file != NULL) {
-                open_files[global_slot] = new_file;
-                files[process_slot] = global_slot;
-                f->eax = process_slot;
-                goto done;
-            }
-            open_fail:
-            f->eax = -1;
-            done:
-            lock_release(&filesys_lock);
+        case SYS_OPEN: 
+            f->eax = open((const char*) getArg(1, f));       
             break;
-        }
-        case SYS_FILESIZE: {
-            int fd = getArg(1, f);
-            int index;
-            if (fd >= 0 && fd < MAX_FILES) {
-                lock_acquire(&filesys_lock);
-                index = process_current()->files[fd];
-                if (index != -1) {
-                    f->eax = file_length(open_files[index]);
-                    lock_release(&filesys_lock);
-                    break;
-                }
-                lock_release(&filesys_lock);
-            }
-            f->eax = -1;
+        case SYS_FILESIZE: 
+            f->eax = filesize(getArg(1, f));       
             break;
-        }
-        case SYS_READ:{
-            int fd = getArg(1, f);
-            void *buffer = (void *) getArg(2, f);
-            off_t size = (off_t) getArg(3, f);
-            int index;
-            if (!w_valid((uint8_t*)buffer) || !w_valid((uint8_t*)((off_t)buffer) + size)) {
-                thread_exit(-1);
-                break;
-            }
-            if (fd >= 0 && fd < MAX_FILES) {
-                lock_acquire(&filesys_lock);
-                index = process_current()->files[fd];
-                if (index != -1) {
-                    f->eax = file_read(open_files[index], buffer, size);
-                    lock_release(&filesys_lock);
-                    break;
-                }
-                lock_release(&filesys_lock);
-            }
-            f->eax = -1;
+        case SYS_READ:
+            f->eax = read(getArg(1, f), (void *) getArg(2, f), 
+                (unsigned) getArg(3, f));       
             break;
-        }
-        case SYS_WRITE:{
-            int fd = getArg(1, f);
-            void *buffer = (void *) getArg(2, f);
-            off_t size = (off_t) getArg(3, f);
-            int index;
-            if (!r_valid((uint8_t*)buffer) || !r_valid((uint8_t*)((off_t)buffer) + size)) {
-                thread_exit(-1);
-                break;
-            }
-            if (fd >= 0 && fd < MAX_FILES) {
-                if (fd == 1) {
-                    putbuf(buffer, size);
-                    break;
-                }
-                else{
-                    lock_acquire(&filesys_lock);
-                    index = process_current()->files[fd];
-                    if (index != -1) {
-                        f->eax = file_write(open_files[index], buffer, size);
-                        lock_release(&filesys_lock);
-                        break;
-                    }
-                    lock_release(&filesys_lock);
-                }
-            }
-            f->eax = 0;
+        case SYS_WRITE:
+            f->eax = write(getArg(1, f), (void *) getArg(2, f), 
+                (unsigned) getArg(3, f));       
             break;
-        }
-        case SYS_SEEK:{
-            int fd = getArg(1, f);
-            off_t pos = (off_t) getArg(2, f);
-            int index;
-            if (fd >= 0 && fd < MAX_FILES) {
-                lock_acquire(&filesys_lock);
-                index = process_current()->files[fd];
-                if (index != -1) 
-                    file_seek(open_files[index], pos);
-                lock_release(&filesys_lock);
-            }
+        case SYS_SEEK:
+            seek(getArg(1, f), (unsigned)getArg(2, f));
             break;
-        }
-        case SYS_TELL:{
-            int fd = getArg(1, f);
-            int index;
-            if (fd >= 0 && fd < MAX_FILES) {
-                lock_acquire(&filesys_lock);
-                index = process_current()->files[fd];
-                if (index != -1) {
-                    f->eax = file_tell(open_files[index]);
-                    lock_release(&filesys_lock);
-                    break;
-                }
-                lock_release(&filesys_lock);
-            }
-            f->eax = -1;
+        case SYS_TELL:
+            f->eax = tell(getArg(1, f));
             break;
-        }
-        case SYS_CLOSE:{
-            int fd = (int) getArg(1, f);
-            int index;
-            if (fd >= 0 && fd < MAX_FILES) {
-                lock_acquire(&filesys_lock);
-                index = process_current()->files[fd];
-                if (index != -1) {
-                    file_close(open_files[index]);
-                    open_files[index] = NULL;
-                }
-                process_current()->files[fd] = -1;
-                lock_release(&filesys_lock);
-            }
+        case SYS_CLOSE:
+            close(getArg(1, f));
             break;
-        }
         #ifdef VM
-        case SYS_MMAP:{
-            int fd = getArg(1, f);
-            void *addr = (void *) getArg(2, f);
-            int index;
-            off_t file_size;
-            struct file *handle;
-            int num_pages;
-            off_t it;
-            struct process *cur_proc = process_current();
-            mapid_t id;
-            mapid_t slot;
-            uint32_t *pd;
-            if ((off_t)addr % PGSIZE || fd < 0 || fd >= MAX_FILES)
-                goto fail1;
-            lock_acquire(&mmap_lock);
-            for (id = 0; id < MAX_MMAPPINGS; id++){
-                if(cur_proc->mmappings[id] == -1)
-                    break;
-            }
-            if (id == MAX_MMAPPINGS){
-                map_fail2:
-                lock_release(&mmap_lock);
-                goto fail1;
-            }
-            for (slot = 0; slot < MAX_GLOBAL_MAPPINGS; slot++){
-                if (all_mmappings[slot].file)
-                    break;
-            }
-            if (slot == MAX_GLOBAL_MAPPINGS)
-                goto map_fail2;
-            lock_acquire(&filesys_lock);
-            index = cur_proc->files[fd];
-            if (index == -1){
-                map_fail3:
-                lock_release(&filesys_lock);
-                goto map_fail2;
-            }
-            handle = open_files[index];
-            file_size = file_length(handle);
-            if (file_size == 0)
-                goto map_fail3;
-            num_pages = (file_size - 1) / PGSIZE + 1;
-            for (it = (off_t)addr; it < (off_t)addr + file_size; it += PGSIZE){
-
-                if(get_supp_page((void*)it) || !w_valid((uint8_t*)it))
-                    goto map_fail3;
-            }
-            all_mmappings[slot].file = file_reopen(handle);
-            lock_release(&filesys_lock);
-            all_mmappings[slot].addr = addr;
-            pd = thread_current()->pagedir;
-            for (index = 0; index < num_pages - 1; index++){
-                create_filesys_page((void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
-            }
-            create_filesys_page((void*)((off_t)addr + PGSIZE * index),pd, 
-                NULL, handle, index * PGSIZE, (off_t)addr % PGSIZE, true);
-            cur_proc->mmappings[id] = slot;
-            lock_release(&mmap_lock);
-            f->eax = id;
+        case SYS_MMAP:
+            f->eax = mmap(getArg(1, f), (void *) getArg(2, f));
             break;
-        }
-        case SYS_MUNMAP:{
-            mapid_t mapping = (mapid_t)getArg(1, f);
-            void *addr;
-            int index;
-            off_t file_size;
-            struct file *handle;
-            int num_pages;
-            off_t it;
-            struct process *cur_proc = process_current();
-            mapid_t id;
-            mapid_t slot;
-            uint32_t *pd;
-            lock_acquire(&mmap_lock);
-            if (mapping >= MAX_MMAPPINGS){
-                lock_release(&mmap_lock);
-                thread_exit(-1);
-            }
-            slot = cur_proc->mmappings[mapping];
-            if (slot < 0 || slot >= MAX_GLOBAL_MAPPINGS || !all_mmappings[slot].addr){
-                lock_release(&mmap_lock);
-                thread_exit(-1);
-            }
-            lock_acquire(&filesys_lock);
-
-
-
-        }
+        case SYS_MUNMAP:
+            munmap((mapid_t)getArg(1, f));
+            break;
         #endif
         default:
             printf("Not implemented!\n");
@@ -348,6 +121,243 @@ static void syscall_handler(struct intr_frame *f) {
             break;
     }
     in_sc = false;
+}
+
+void halt(void){
+    shutdown_power_off();
+}
+
+void exit(int status){
+    thread_exit(status);
+}
+
+pid_t exec(const char *file){
+    pid_t pid;
+    if (!r_valid((uint8_t*) file))
+        return PID_ERROR;
+    lock_acquire(&filesys_lock);
+    pid = (int) process_execute(file);
+    lock_release(&filesys_lock);
+    return pid;
+}
+
+int wait(pid_t pid){
+    return process_wait(pid);
+}
+
+bool create(const char *file, unsigned initial_size){
+    bool status = false;
+    if (!r_valid((uint8_t *)file)){
+        thread_exit(EXIT_FAILURE);
+    }
+    else{
+        lock_acquire(&filesys_lock);
+        status = filesys_create(file, initial_size);
+        lock_release(&filesys_lock); 
+    }
+    return status;
+}
+
+bool remove(const char *file){
+    bool status = false;
+    if (!r_valid((uint8_t *)file)){
+        thread_exit(EXIT_FAILURE);
+    }
+    else{
+        lock_acquire(&filesys_lock);
+        status = filesys_remove(file);
+        lock_release(&filesys_lock); 
+    }
+    return status;
+}   
+
+int open(const char *file){
+    int* files = process_current()->files;
+    int fd = EXIT_FAILURE;
+    int process_slot = 2;
+    int global_slot = 0;
+    if (!r_valid((uint8_t *)file)){
+        thread_exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
+    }
+    lock_acquire(&filesys_lock);
+    while (process_slot < MAX_FILES && files[process_slot] != -1)
+        process_slot++;
+    if (process_slot < MAX_FILES){
+        while (global_slot < MAX_GLOBAL_FILES && 
+            open_files[global_slot] != NULL)
+            global_slot++;
+        if (global_slot < MAX_GLOBAL_FILES){
+            open_files[global_slot] = filesys_open(file);
+            if (open_files[global_slot] != NULL) {
+                files[process_slot] = global_slot;
+                fd = process_slot;
+            }
+        }
+    }
+    lock_release(&filesys_lock);
+    return fd;
+}
+
+int filesize(int fd){
+    int index;
+    int fsize = -1;
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1) {
+            fsize = file_length(open_files[index]);
+        lock_release(&filesys_lock);
+        }
+    }
+    return fsize;
+}
+
+int read(int fd, void *buffer, unsigned length){
+    int index;
+    int bytes_read = -1;
+    if (!w_valid((uint8_t*)buffer)) {
+        thread_exit(-1);
+        return EXIT_FAILURE;
+    }
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1) {
+            bytes_read = file_read(open_files[index], buffer, length);
+        }
+        lock_release(&filesys_lock);
+    }
+    return bytes_read;
+}
+
+int write(int fd, const void *buffer, unsigned length){
+    int index;
+    int bytes_read = -1;
+    if (!w_valid((uint8_t*)buffer)) {
+        thread_exit(-1);
+        return EXIT_FAILURE;
+    }
+    if (fd >= 0 && fd < MAX_FILES) {
+        if (fd == 1) 
+            putbuf(buffer, length);
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1) {
+            bytes_read = file_write(open_files[index], buffer, length);
+        }
+        lock_release(&filesys_lock);
+    }
+    return bytes_read;
+}
+
+void seek(int fd, unsigned position){
+    int index;
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1) 
+            file_seek(open_files[index], position);
+        lock_release(&filesys_lock);
+    }
+}
+
+unsigned tell(int fd){
+    int index;
+    unsigned position = -1;
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1) {
+            position = file_tell(open_files[index]);
+        }
+        lock_release(&filesys_lock);
+    }
+    return position;
+}
+
+void close(int fd){
+    int index;
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1) {
+            file_close(open_files[index]);
+            open_files[index] = NULL;
+        }
+        process_current()->files[fd] = -1;
+        lock_release(&filesys_lock);
+    }
+}
+
+mapid_t mmap(int fd, void *addr){
+    int index;
+    off_t file_size;
+    struct file *handle;
+    int num_pages;
+    off_t it;
+    struct process *cur_proc = process_current();
+    mapid_t mapping = 0;
+    int *mappings;
+    mapid_t slot = 0;
+    uint32_t *pd;
+
+    if ((off_t)addr % PGSIZE || fd < 0 || fd >= MAX_FILES)
+        return MAP_FAILED;
+
+    lock_acquire(&mmap_lock);
+    mappings = cur_proc->mmappings;
+    while (mapping < MAX_MMAPPINGS && mappings[mapping] != -1)
+        mapping++;
+    if (mapping == MAX_MMAPPINGS){
+        lock_release(&mmap_lock);
+        return MAP_FAILED;
+    }
+
+    while (slot < MAX_GLOBAL_MAPPINGS && all_mmappings[slot].addr)
+        slot++;
+    if (slot == MAX_GLOBAL_MAPPINGS){
+        lock_release(&mmap_lock);
+        return MAP_FAILED;
+    }
+
+    lock_acquire(&filesys_lock);
+    index = cur_proc->files[fd];
+    if (index == -1){
+        lock_release(&filesys_lock);
+        lock_release(&mmap_lock);
+        return MAP_FAILED;
+    }
+    handle = open_files[index];
+    file_size = file_length(handle);
+    if (file_size == 0){
+        lock_release(&filesys_lock);
+        lock_release(&mmap_lock);
+        return MAP_FAILED;
+    }
+    num_pages = (file_size - 1) / PGSIZE + 1;
+    for (it = (off_t)addr; it < (off_t)addr + file_size; it += PGSIZE){
+        if(get_supp_page((void*)it) || !w_valid((uint8_t*)it)){
+            lock_release(&filesys_lock);
+            lock_release(&mmap_lock);
+            return MAP_FAILED;
+        }
+    }
+    all_mmappings[slot].file = file_reopen(handle);
+    lock_release(&filesys_lock);
+    all_mmappings[slot].addr = addr;
+    pd = thread_current()->pagedir;
+    for (index = 0; index < num_pages - 1; index++){
+        create_filesys_page((void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
+    }
+    create_filesys_page((void*)((off_t)addr + PGSIZE * index),pd, 
+        NULL, handle, index * PGSIZE, (off_t)addr % PGSIZE, true);
+    cur_proc->mmappings[mapping] = slot;
+    lock_release(&mmap_lock);
+    return mapping;
+}
+
+void munmap(mapid_t mapping){
 }
 
 int getArg(int argnum, struct intr_frame *f) {
