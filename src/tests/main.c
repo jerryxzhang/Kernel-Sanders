@@ -3,6 +3,8 @@
 #include "tests/main.h"
 
 int main(int argc UNUSED, char *argv[]) {
+
+    printf("WRKT %x\n", &argv);
   test_name = argv[0];
 
   msg("begin");

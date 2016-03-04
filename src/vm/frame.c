@@ -3,7 +3,6 @@
  *  Contains methods for the frame table and frame pages.
  */
 
-
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -30,13 +29,8 @@
 #include "page.h"
 #include "swap.h"
 
-
-
 struct list frame_table;	/* Frames in the table */
-
-
 struct frame *frame_choose_victim(void); /* Chooses the next frame to free. */
-
 
 /*! init_frame_table
  * 
@@ -48,7 +42,6 @@ void init_frame_table(void) {
 	list_init(&frame_table);
 }
 
-
 /*! frame_create
  *  
  *  @description This gets a new page from the user pool and adds it to the
@@ -58,25 +51,32 @@ void init_frame_table(void) {
  *  @return a pointer to the new page
  */
 struct frame *frame_create(int flags) {
+    printf("starting frame alloc\n");
 	/* Get a page from the user pool. */
 	void *kpage = palloc_get_page(flags);
 	
 	/* If couldn't get page, evict and try again. */
 	if (!kpage) {
+        printf("EVICTINGGGG\n");
 		frame_evict();
 		kpage = palloc_get_page(flags);
 	}
-	
+
+    if (!kpage) {
+        PANIC("EVICTION FAILLLEEDDDD!!!!11");
+    }
+
 	/* Create and update the frame struct so we can add it to our table. */
 	struct frame *new_frame = (struct frame *)malloc(sizeof(struct frame));
 	new_frame->phys_addr = kpage;
 	
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
+
+    printf("Allocated new frame! %x\n", kpage);
 	
 	return new_frame;
 }
-
 
 /*! frame_free
  * 
@@ -88,8 +88,8 @@ struct frame *frame_create(int flags) {
  *  @return 0 if no errors, 1 otherwise.
  */
 int frame_free(struct frame *fr) {
-	ASSERT (fr);
-	
+    if (!fr) return 1;
+
 	/* Remove the frame from the frame table. */
 	list_remove(&fr->frame_elem);
 	
@@ -99,8 +99,6 @@ int frame_free(struct frame *fr) {
 	/* Return 0 if successful, 1 otherwise. */
 	return 0;
 }
-
-
 
 /*! frame_choose_victim
  * 
@@ -130,8 +128,6 @@ struct frame *frame_choose_victim(void) {
     }
 }
 
-
-
 /*! frame_evict
  *  
  *  @description Evicts a page from a frame to free it for another page's use.
@@ -139,42 +135,34 @@ struct frame *frame_choose_victim(void) {
 void frame_evict(void) {
 	/* Choose the frame whose page(s) should be evicted. */
 	struct frame *victim = frame_choose_victim();
-	
+    printf("evicting page %x\n", victim);	
+
 	/*! TODO: check my logic. I'm not sure if I correctly handle aliasing by
 	 *  finding any and all pages that use this frame. */
-	struct list_elem *e;
-	struct supp_page *spg;
-	for (e = list_begin(&supp_page_table); e != list_end(&supp_page_table); e = list_next(e)) {
-		/* Get the supplementary page so we can decide how to handle this. */
-		spg = list_entry(e, struct supp_page, supp_page_elem);
-		
-		/* Only care if this page is associated with the frame. */
-		if (spg->fr == victim) {
-			/* If it is dirty, we need to store the data. */
-			if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr)) {
-				switch (spg->type) {
-					case filesys :
-						/* Write it back to the file. */
-						file_write_at(spg->fil, spg->fr->phys_addr, spg->bytes, spg->offset);
-						break;
-						
-					case swapslot :
-						/* Write to a swap. */
-						spg->swap = swap_put_page(spg->fr->phys_addr);
-						spg->fr = NULL;
-						break;
-						
-					default :
-						PANIC ("Error evicting frame.\n");
-						break;
-				}
-			}
-			
-			/* Clear the page and frame. */
-			frame_free(spg->fr);
-			
-			/* Free the supplemental page. */
-			free_supp_page(spg);
+	struct supp_page *spg = victim->page;
+    ASSERT(spg->fr == victim);
+	if (spg->fr == victim) {
+		/* If it is dirty, we need to store the data. */
+		switch (spg->type) {
+			case filesys :
+		        if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr)) {
+					/* Write it back to the file. */
+					file_write_at(spg->fil, spg->fr->phys_addr, 
+                            spg->bytes, spg->offset);
+			    }
+				break;
+			case swapslot :
+			    /* Write to a swap. */
+				spg->swap = swap_put_page(spg->fr->phys_addr);
+                printf("wrote to swap %d\n", spg->swap->slot_num);
+				break;
+			default :
+				PANIC ("Error evicting frame.\n");
+				break;
 		}
+		/* Clear the page and frame. */
+        ASSERT(!frame_free(spg->fr));
+        spg->fr = NULL;
 	}
+    printf("Done with eviction\n");
 }

@@ -296,16 +296,19 @@ mapid_t mmap(int fd, void *addr){
     struct file *handle;
     int num_pages;
     off_t it;
-    struct process *cur_proc = process_current();
+    struct process *cur_proc;
     mapid_t mapping = 0;
     int *mappings;
     mapid_t slot = 0;
     uint32_t *pd;
+    struct hash *supp_table;
 
-    if ((off_t)addr % PGSIZE || fd < 0 || fd >= MAX_FILES)
+    if ((off_t)addr % PGSIZE || fd < 0 || fd >= MAX_FILES || fd == 0 ||
+        fd == 1 || (off_t)addr == 0)
         return MAP_FAILED;
 
     lock_acquire(&mmap_lock);
+    cur_proc = process_current;
     mappings = cur_proc->mmappings;
     while (mapping < MAX_MMAPPINGS && mappings[mapping] != -1)
         mapping++;
@@ -336,8 +339,9 @@ mapid_t mmap(int fd, void *addr){
         return MAP_FAILED;
     }
     num_pages = (file_size - 1) / PGSIZE + 1;
+    supp_table = &process_current()->supp_page_table;
     for (it = (off_t)addr; it < (off_t)addr + file_size; it += PGSIZE){
-        if(get_supp_page((void*)it) || !w_valid((uint8_t*)it)){
+        if(get_supp_page(supp_table, (void*)it)){
             lock_release(&filesys_lock);
             lock_release(&mmap_lock);
             return MAP_FAILED;
@@ -348,16 +352,29 @@ mapid_t mmap(int fd, void *addr){
     all_mmappings[slot].addr = addr;
     pd = thread_current()->pagedir;
     for (index = 0; index < num_pages - 1; index++){
-        create_filesys_page((void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
+        create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
     }
-    create_filesys_page((void*)((off_t)addr + PGSIZE * index),pd, 
-        NULL, handle, index * PGSIZE, (off_t)addr % PGSIZE, true);
+    create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, (off_t)addr % PGSIZE, true);
     cur_proc->mmappings[mapping] = slot;
     lock_release(&mmap_lock);
     return mapping;
 }
 
 void munmap(mapid_t mapping){
+    // int index;
+    // off_t file_size;
+    // struct file *handle;
+    // int num_pages;
+    // off_t it;
+    // struct process *cur_proc;
+    // mapid_t mapping = 0;
+    // int *mappings;
+    // mapid_t slot = 0;
+    // uint32_t *pd;
+    // struct hash *supp_table;
+    if (mapping >= MAX_MMAPPINGS)
+        return;
+
 }
 
 int getArg(int argnum, struct intr_frame *f) {
