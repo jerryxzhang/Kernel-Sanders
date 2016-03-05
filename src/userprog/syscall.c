@@ -11,7 +11,7 @@
 
 #ifdef VM
 #include "vm/page.h"
-#define MAX_GLOBAL_MAPPINGS MAX_PROCESSES * 4
+#define MAX_GLOBAL_MAPPINGS MAX_PROCESSES * 2
 
 struct mmapping {
     void* addr;
@@ -22,7 +22,7 @@ static struct mmapping all_mmappings[MAX_GLOBAL_MAPPINGS];
 static struct lock mmap_lock;
 #endif
 
-#define MAX_GLOBAL_FILES MAX_PROCESSES * 4
+#define MAX_GLOBAL_FILES MAX_PROCESSES * 2
 
 static void syscall_handler(struct intr_frame *);
 int getArg(int argnum, struct intr_frame *f);
@@ -239,8 +239,10 @@ int write(int fd, const void *buffer, unsigned length){
         return EXIT_FAILURE;
     }
     if (fd >= 0 && fd < MAX_FILES) {
-        if (fd == 1) 
+        if (fd == 1) {
             putbuf(buffer, length);
+            return (int)length;
+        }
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1) {
