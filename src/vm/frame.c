@@ -51,13 +51,11 @@ void init_frame_table(void) {
  *  @return a pointer to the new page
  */
 struct frame *frame_create(int flags) {
-    printf("starting frame alloc\n");
 	/* Get a page from the user pool. */
 	void *kpage = palloc_get_page(flags);
 	
 	/* If couldn't get page, evict and try again. */
 	if (!kpage) {
-        printf("EVICTINGGGG\n");
 		frame_evict();
 		kpage = palloc_get_page(flags);
 	}
@@ -135,34 +133,36 @@ struct frame *frame_choose_victim(void) {
 void frame_evict(void) {
 	/* Choose the frame whose page(s) should be evicted. */
 	struct frame *victim = frame_choose_victim();
-    printf("evicting page %x\n", victim);	
+    printf("evicting frame %x\n", victim->phys_addr);	
 
 	/*! TODO: check my logic. I'm not sure if I correctly handle aliasing by
 	 *  finding any and all pages that use this frame. */
 	struct supp_page *spg = victim->page;
     ASSERT(spg->fr == victim);
-	if (spg->fr == victim) {
-		/* If it is dirty, we need to store the data. */
-		switch (spg->type) {
-			case filesys :
-		        if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr)) {
-					/* Write it back to the file. */
-					file_write_at(spg->fil, spg->fr->phys_addr, 
-                            spg->bytes, spg->offset);
-			    }
-				break;
-			case swapslot :
-			    /* Write to a swap. */
-				spg->swap = swap_put_page(spg->fr->phys_addr);
-                printf("wrote to swap %d\n", spg->swap->slot_num);
-				break;
-			default :
-				PANIC ("Error evicting frame.\n");
-				break;
-		}
-		/* Clear the page and frame. */
-        ASSERT(!frame_free(spg->fr));
-        spg->fr = NULL;
+	/* If it is dirty, we need to store the data. */
+	switch (spg->type) {
+		case filesys :
+	        if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr) || 
+                       pagedir_is_dirty(spg->pd, spg->vaddr)) {
+				/* Write it back to the file. */
+				file_write_at(spg->fil, spg->fr->phys_addr, 
+                           spg->bytes, spg->offset);
+                printf("Wrote back dirty file\n");
+		    } else {
+                printf("Evicting file page, but not dirty\n");
+            }
+			break;
+		case swapslot :
+		    /* Write to a swap. */
+			spg->swap = swap_put_page(spg->fr->phys_addr);
+            printf("wrote to swap %d\n", spg->swap->slot_num);
+			break;
+		default :
+			PANIC ("Error evicting frame.\n");
+			break;
 	}
-    printf("Done with eviction\n");
+
+    /* Clear the page and frame. */
+    ASSERT(!frame_free(spg->fr));
+    spg->fr = NULL;
 }

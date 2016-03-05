@@ -148,8 +148,11 @@ static void page_fault(struct intr_frame *f) {
         return;
     }
 
+    void *upage = pg_round_down(fault_addr);
+
+    if (!is_user_vaddr(upage)) kill(f);
+
     void* esp = in_syscall() ? thread_current()->esp : f->esp;
-    void *upage = (void*) ((uint32_t) fault_addr & ~PGMASK);
     
     printf("page faulted %x!\n", fault_addr);
     if (page_to_new_frame(&process_current()->supp_page_table, upage)) {

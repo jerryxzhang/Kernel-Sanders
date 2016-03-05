@@ -109,11 +109,11 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
     ASSERT(is_user_vaddr(vaddr));
     ASSERT(pg_ofs(vaddr) == 0);
     
-    printf("GETTING %x\n", vaddr);
 	/* Make sure the address points to valid data. */
 	if (!valid_page_data(table, vaddr))
 		return NULL;
 	
+    printf("Paging %x to new frame\n", vaddr);
 	/* Get supplemental page so we know where to look for vaddr data. */
 	struct supp_page *spg = get_supp_page(table, vaddr);
 	
@@ -121,35 +121,30 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 	frame_free(spg->fr);
     		
 	/* Create a new frame to load vaddr's data into. */
-    printf("wtf\n");
-    struct frame *new_frame = frame_create(PAL_USER);
+    struct frame *new_frame = frame_create(PAL_USER | PAL_ZERO);
     new_frame->page = spg;
+    spg->fr = new_frame;
 	
 	/* Populate new frame based on what vaddr supposedly pointed to. */
 	switch (spg->type) {
 		case filesys : /* Read from file for specified number of bytes. */
-			if (file_read(spg->fil, new_frame->phys_addr, spg->bytes) != (int) spg->bytes) {
+            printf("Reading in from file\n");
+			if (file_read_at(spg->fil, new_frame->phys_addr, spg->bytes, spg->offset) != (int) spg->bytes) {
 				PANIC("Error with page fault\n");
-				return NULL;
 			}
-			memset(new_frame->phys_addr + spg->bytes, 0, PGSIZE - spg->bytes);
 			break;
-			
 		case swapslot : /* Read from swap slot. */
+            printf("Reading in from slot\n");
 			swap_retrieve_page(new_frame->phys_addr, spg->swap);
 			break;
-			
 		case kernel : /* Shouldn't be here because valid_page_data was true. */
 			PANIC("Unable to handle page fault.\n");
 			break;
-			
 		default : /* Something went terribly wrong if not one of the enums. */
 			PANIC("Unknown error when handling page fault.\n");
 			break;
 	}
 		
-	/* Clear the mapping from vaddr to any physical address (if it existed). */
-	pagedir_clear_page(spg->pd, vaddr);
 	/* Map vaddr to the physical address we just created. */
 	pagedir_set_page(spg->pd, vaddr, new_frame->phys_addr, spg->wr);
 	

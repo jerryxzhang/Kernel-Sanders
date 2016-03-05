@@ -680,11 +680,10 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
     ASSERT(pg_ofs(upage) == 0);
     ASSERT(ofs % PGSIZE == 0);
-
-    printf("LOCAING SEGMENT\n");
-
     file_seek(file, ofs);
     int total_ofs = ofs;
+    uint8_t *upage_ = upage;
+    uint32_t read_bytes_ = read_bytes;
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
            We will read PAGE_READ_BYTES bytes from FILE
@@ -694,40 +693,25 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
 
         /* Load this page. */
         printf("MEHHHH\n");
-        struct frame *new_fr = frame_create(PAL_USER);
-        if (file_read(file, new_fr->phys_addr, page_read_bytes) != (int) page_read_bytes) {
-            frame_free(new_fr);
-            return false;
-        }
-        memset(new_fr->phys_addr + page_read_bytes, 0, page_zero_bytes);
 
         /* Get a page of memory. */
         struct supp_page *spg = create_filesys_page(
                 &process_current()->supp_page_table, upage, 
-                thread_current()->pagedir, new_fr,
+                thread_current()->pagedir, NULL,
 				file, total_ofs, page_read_bytes, writable);
-        new_fr->page = spg;
-        printf("dEHHHH\n");
-		if (!spg) {
-            frame_free(new_fr);
+		
+        if (!spg) {
 			free_supp_page(&process_current()->supp_page_table, spg);
 			return false;
 		}
         
-        /* Add the page to the process's address space. */
-        if (!install_page(upage, new_fr->phys_addr, writable)) {
-            frame_free(new_fr);
-            free_supp_page(&process_current()->supp_page_table, spg);
-            return false; 
-        }
-
-
         /* Advance. */
         read_bytes -= page_read_bytes;
         zero_bytes -= page_zero_bytes;
         upage += PGSIZE;
         total_ofs += PGSIZE;
     }
+    printf("Loaded segment of %d bytes starting at addr %x ending at addr %x and %d writable\n", read_bytes_, upage_, upage, writable);
     return true;
 }
 
@@ -737,7 +721,7 @@ static bool setup_stack(void **esp) {
 	struct frame *new_fr;
     uint8_t *kpage;
     bool success = false;
-    printf("SETTUIGN UP STACK\n");
+    
     void *upage = (void *)(PHYS_BASE - PGSIZE);
     
     new_fr = frame_create(PAL_USER | PAL_ZERO);
@@ -753,7 +737,6 @@ static bool setup_stack(void **esp) {
         else
             frame_free(new_fr);
     }
-    printf("done SETTUIGN UP STACK\n");
     return success;
 }
 
