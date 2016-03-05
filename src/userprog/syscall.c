@@ -234,7 +234,7 @@ int read(int fd, void *buffer, unsigned length){
 int write(int fd, const void *buffer, unsigned length){
     int index;
     int bytes_read = -1;
-    if (!w_valid((uint8_t*)buffer)) {
+    if (!r_valid((uint8_t*)buffer)) {
         thread_exit(-1);
         return EXIT_FAILURE;
     }
