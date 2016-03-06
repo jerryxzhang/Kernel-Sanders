@@ -96,7 +96,7 @@ int frame_free(struct frame *fr) {
 	/* Remove the page so there is space. */
     // TODO: why does freeing the page cause weird errors with pagedir_destroy
     // It seems like after the page is freed here, pagedir_destroy attempts the free the same page again?
-	//palloc_free_page(fr->phys_addr);
+	palloc_free_page(fr->phys_addr);
 //	printf("Freeing Frame %x\n", fr->phys_addr);
 
 	free((void*)fr);
@@ -166,6 +166,7 @@ void frame_evict(struct frame *fr) {
 	}
 
     /* Clear the page and frame. */
+    pagedir_clear_page(spg->pd, spg->vaddr);
     ASSERT(!frame_free(spg->fr));
     spg->fr = NULL;
 }
