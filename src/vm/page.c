@@ -33,6 +33,7 @@ struct supp_page *allocate_supp_page(struct hash *table, void *vaddr);
 
 bool less_func(const struct hash_elem *a, const struct hash_elem *b, void* aux UNUSED);
 unsigned hash_func(const struct hash_elem *e, void *aux UNUSED);
+void free_action_func(struct hash_elem *elem, void *aux UNUSED);
 
 
 bool less_func(const struct hash_elem *a, const struct hash_elem *b, void* aux UNUSED) {
@@ -52,7 +53,20 @@ void init_supp_page_table(struct hash *table) {
     hash_init(table, &hash_func, &less_func, NULL /* aux */);
 }
 
+
+void free_action_func(struct hash_elem *elem, void *aux UNUSED) {
+    struct supp_page *page = hash_entry(elem, struct supp_page, elem);
+    if (page->fr && page->type == filesys) frame_evict(page->fr);
+    else if (page->fr) frame_free(page->fr);
+
+    if (page->type == swapslot && page->swap) swap_remove_page(page->swap);
+    pagedir_clear_page(thread_current()->pagedir, page->vaddr);
+    free(page);
+}
+
 void free_supp_page_table(struct hash *table) {
+    hash_apply(table, &free_action_func);
+    hash_destroy(table, NULL);
 }
 
 /*! locate_page
@@ -164,8 +178,6 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
  */
 int free_supp_page(struct hash *table, struct supp_page *spg) {
     ASSERT(get_supp_page(table, spg->vaddr) != NULL);
-    if(spg->fr)
-    	frame_evict(spg->fr);
     hash_delete(table, &spg->elem);
     free((void*)spg);
 	return 0;
@@ -178,6 +190,7 @@ struct supp_page *allocate_supp_page(struct hash *table, void *vaddr) {
 
     struct supp_page *p = malloc(sizeof(struct supp_page));
     p->vaddr = vaddr;
+    pagedir_set_dirty(thread_current()->pagedir, vaddr, false);
 
     hash_insert(table, &p->elem);
     return p;
@@ -211,7 +224,7 @@ struct supp_page *create_filesys_page(struct hash *table, void *vaddr, uint32_t 
 	new_page->pd = pd;
 	
 	new_page->swap = NULL;
-	
+
 	return new_page;
 }
 
@@ -235,6 +248,8 @@ struct supp_page *create_swapslot_page(struct hash *table, void *vaddr, uint32_t
 	new_page->bytes = 0;
 	new_page->wr = writable;
 	new_page->pd = pd;
+
+    new_page->swap = NULL;
 	
 	return new_page;
 }

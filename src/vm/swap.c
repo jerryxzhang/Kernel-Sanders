@@ -104,7 +104,7 @@ struct swap_slot *swap_find_empty(void) {
 void swap_remove_page(struct swap_slot *swap) {
 	ASSERT (swap != NULL);
 	
-	/* Mark page as unused. */
+    /* Mark page as unused. */
 	swap->in_use = false;
 }
 

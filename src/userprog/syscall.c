@@ -306,8 +306,8 @@ mapid_t mmap(int fd, void *addr){
     uint32_t *pd;
     struct hash *supp_table;
 
-    if ((off_t)addr % PGSIZE || fd < 0 || fd >= MAX_FILES || fd == 0 ||
-        fd == 1 || (off_t)addr == 0 || is_kernel_vaddr(addr))
+    if (pg_ofs(addr) != 0 || fd < 2 || fd >= MAX_FILES || addr == NULL 
+            || is_kernel_vaddr(addr))
         return MAP_FAILED;
 
     lock_acquire(&mmap_lock);
@@ -389,22 +389,17 @@ void munmap(mapid_t mapping){
             supp_table = &process_current()->supp_page_table;
             for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size; i += PGSIZE){
                 ASSERT(is_user_vaddr((void*)i));
-                free_supp_page(supp_table, get_supp_page(supp_table, (void*)i));
+                struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                if (p->fr) frame_evict(p->fr);
+                free_supp_page(supp_table, p);
             }
             file_close(mm.file);
-            lock_release(&filesys_lock);
-            
-            
-            
+            lock_release(&filesys_lock);           
         }
         else
             lock_release(&mmap_lock);
-    }
-            
+    }            
 }
-        
-
-
 
 int getArg(int argnum, struct intr_frame *f) {
     int* addr = (int*) f->esp + argnum;

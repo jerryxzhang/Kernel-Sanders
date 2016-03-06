@@ -68,6 +68,7 @@ struct frame *frame_create(int flags) {
 	struct frame *new_frame = (struct frame *)malloc(sizeof(struct frame));
 	new_frame->phys_addr = kpage;
     new_frame->page = NULL;
+    pagedir_set_dirty(thread_current()->pagedir, kpage, false);
 	
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
@@ -93,8 +94,10 @@ int frame_free(struct frame *fr) {
 	list_remove(&fr->frame_elem);
 	
 	/* Remove the page so there is space. */
-	palloc_free_page(fr->phys_addr);
-	
+    // TODO: why does freeing the page cause weird errors with pagedir_destroy
+    // It seems like after the page is freed here, pagedir_destroy attempts the free the same page again?
+	//palloc_free_page(fr->phys_addr);
+//	printf("Freeing Frame %x\n", fr->phys_addr);
 
 	free((void*)fr);
 	/* Return 0 if successful, 1 otherwise. */
@@ -140,17 +143,16 @@ void frame_evict(struct frame *fr) {
     ASSERT(spg->fr == fr);
 	switch (spg->type) {
 		case filesys :
-	        if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr) || 
+	        if (//pagedir_is_dirty(spg->pd, fr->phys_addr) || 
                        pagedir_is_dirty(spg->pd, spg->vaddr)) {
 	            /* If it is dirty, we need to store the data. */
 				/* Write it back to the file. */
 				file_write_at(spg->fil, spg->fr->phys_addr, 
                            spg->bytes, spg->offset);
-                //printf("Wrote back dirty file\n");
-                pagedir_set_dirty(spg->pd, spg->fr->phys_addr, false);
+//                printf("Wrote back dirty file\n");
                 pagedir_set_dirty(spg->pd, spg->vaddr, false);
 		    } else {
-                //printf("Evicting file page, but not dirty\n");
+  //              printf("Evicting file page, but not dirty\n");
             }
 			break;
 		case swapslot :

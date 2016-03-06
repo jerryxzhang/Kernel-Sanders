@@ -113,7 +113,6 @@ void process_table_free(struct process *p) {
 
     p->valid = false;
     list_remove(&p->elem);
-    free_supp_page_table(&p->supp_page_table);
 
     list_push_back(&free_list, &p->elem);
 }
@@ -378,13 +377,7 @@ void process_exit(int code) {
     p->running = false;
     if (p->file) file_close(p->file);
 
-    // Unblock the parent if it is waiting
-    enum intr_level old_level = intr_disable();
-    if (p->blocked) {
-        p->blocked = false;
-        thread_unblock(process_table[p->parent_pid].thread_ptr);
-    }
-    intr_set_level(old_level);
+    free_supp_page_table(&p->supp_page_table);
 
     // Deal with any remaining children
     if (!list_empty(&p->children)) {
@@ -405,7 +398,7 @@ void process_exit(int code) {
     // Parent is dead, so noone will wait for this child
     if (p->parent_pid == -1) {
         process_table_free(p);
-    }
+    }    
 
     /* Destroy the current process's page directory and switch back
        to the kernel-only page directory. */
@@ -422,6 +415,14 @@ void process_exit(int code) {
         pagedir_activate(NULL);
         pagedir_destroy(pd);
     }
+
+    // Unblock the parent if it is waiting
+    enum intr_level old_level = intr_disable();
+    if (p->blocked) {
+        p->blocked = false;
+        thread_unblock(process_table[p->parent_pid].thread_ptr);
+    }
+    intr_set_level(old_level);
 }
 
 /*! Sets up the CPU for running user code in the current thread.
