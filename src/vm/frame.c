@@ -94,6 +94,8 @@ int frame_free(struct frame *fr) {
 	/* Remove the page so there is space. */
 	palloc_free_page(fr->phys_addr);
 	
+
+	free((void*)fr);
 	/* Return 0 if successful, 1 otherwise. */
 	return 0;
 }

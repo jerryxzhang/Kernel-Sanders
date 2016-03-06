@@ -162,6 +162,7 @@ int free_supp_page(struct hash *table, struct supp_page *spg) {
     ASSERT(get_supp_page(table, spg->vaddr) != NULL);
 
     hash_delete(table, &spg->elem);
+    free((void*)spg);
 	return 0;
 }
 
