@@ -115,8 +115,7 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 	/* Get supplemental page so we know where to look for vaddr data. */
 	struct supp_page *spg = get_supp_page(table, vaddr);
 	
-	/* Probably no frame, but delete it just in case so we can replace it. */
-	frame_free(spg->fr);
+	ASSERT(!spg->fr);
     		
 	/* Create a new frame to load vaddr's data into. */
     struct frame *new_frame = frame_create(PAL_USER | PAL_ZERO);
@@ -160,7 +159,8 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
  */
 int free_supp_page(struct hash *table, struct supp_page *spg) {
     ASSERT(get_supp_page(table, spg->vaddr) != NULL);
-
+    if(spg->fr)
+    	frame_evict(spg->fr);
     hash_delete(table, &spg->elem);
     free((void*)spg);
 	return 0;

@@ -56,7 +56,7 @@ struct frame *frame_create(int flags) {
 	
 	/* If couldn't get page, evict and try again. */
 	if (!kpage) {
-		frame_evict();
+		frame_evict(frame_choose_victim());
 		kpage = palloc_get_page(flags);
 	}
 
@@ -132,15 +132,13 @@ struct frame *frame_choose_victim(void) {
  *  
  *  @description Evicts a page from a frame to free it for another page's use.
  */
-void frame_evict(void) {
-	/* Choose the frame whose page(s) should be evicted. */
-	struct frame *victim = frame_choose_victim();
-    //printf("evicting frame %x\n", victim->phys_addr);	
+void frame_evict(struct frame *fr) {
+    //printf("evicting frame %x\n", fr->phys_addr);	
 
 	/*! TODO: check my logic. I'm not sure if I correctly handle aliasing by
 	 *  finding any and all pages that use this frame. */
-	struct supp_page *spg = victim->page;
-    ASSERT(spg->fr == victim);
+	struct supp_page *spg = fr->page;
+    ASSERT(spg->fr == fr);
 	/* If it is dirty, we need to store the data. */
 	switch (spg->type) {
 		case filesys :
