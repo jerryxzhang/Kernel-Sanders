@@ -142,7 +142,7 @@ static void page_fault(struct intr_frame *f) {
     
     // Access is kernel verifying an address
     if (!user) {
-        printf("kernel fault\n");
+        //printf("kernel fault\n");
         f->eip = (void (*) (void)) f->eax;
         f->eax = -1;
         return;
@@ -154,13 +154,13 @@ static void page_fault(struct intr_frame *f) {
 
     void* esp = in_syscall() ? thread_current()->esp : f->esp;
     
-    printf("page faulted %x!\n", fault_addr);
+    //printf("page faulted %x!\n", fault_addr);
     if (page_to_new_frame(&process_current()->supp_page_table, upage)) {
-        printf("User page successfully paged in! %x\n", fault_addr);
+        //printf("User page successfully paged in! %x\n", fault_addr);
         return;
     } else if ((uint32_t) fault_addr > ((uint32_t) esp) - 64  
             && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
-        printf("GROWING STACK\n"); 
+        //printf("GROWING STACK\n"); 
         struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
         new_fr->page = create_swapslot_page(
                 &process_current()->supp_page_table, upage, 

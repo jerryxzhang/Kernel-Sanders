@@ -71,7 +71,7 @@ struct frame *frame_create(int flags) {
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
 
-    printf("Allocated new frame! %x\n", kpage);
+    //printf("Allocated new frame! %x\n", kpage);
 	
 	return new_frame;
 }
@@ -133,7 +133,7 @@ struct frame *frame_choose_victim(void) {
 void frame_evict(void) {
 	/* Choose the frame whose page(s) should be evicted. */
 	struct frame *victim = frame_choose_victim();
-    printf("evicting frame %x\n", victim->phys_addr);	
+    //printf("evicting frame %x\n", victim->phys_addr);	
 
 	/*! TODO: check my logic. I'm not sure if I correctly handle aliasing by
 	 *  finding any and all pages that use this frame. */
@@ -147,15 +147,15 @@ void frame_evict(void) {
 				/* Write it back to the file. */
 				file_write_at(spg->fil, spg->fr->phys_addr, 
                            spg->bytes, spg->offset);
-                printf("Wrote back dirty file\n");
+                //printf("Wrote back dirty file\n");
 		    } else {
-                printf("Evicting file page, but not dirty\n");
+                //printf("Evicting file page, but not dirty\n");
             }
 			break;
 		case swapslot :
 		    /* Write to a swap. */
 			spg->swap = swap_put_page(spg->fr->phys_addr);
-            printf("wrote to swap %d\n", spg->swap->slot_num);
+            //printf("wrote to swap %d\n", spg->swap->slot_num);
 			break;
 		default :
 			PANIC ("Error evicting frame.\n");
