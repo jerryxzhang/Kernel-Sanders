@@ -16,6 +16,6 @@ struct frame {
 void init_frame_table(void); /* Initializes the frame table. */
 struct frame *frame_create(int flags); /* Gets a page from user pool and adds it to frame table. */
 int frame_free(struct frame *fr); /* Frees page and removes frame from table. */
-void frame_evict(void); /* Evicts a page from a frame to free it up. */
+void frame_evict(struct frame *fr); /* Evicts a page from a frame to free it up. */
 
 #endif // #ifndef VM_FRAME
