@@ -296,7 +296,8 @@ mapid_t mmap(int fd, void *addr){
     int index;
     off_t file_size;
     struct file *handle;
-    int num_pages;
+    int num_whole_pages;
+    off_t last_page_bytes;
     off_t it;
     struct process *cur_proc;
     mapid_t mapping = 0;
@@ -340,7 +341,8 @@ mapid_t mmap(int fd, void *addr){
         lock_release(&mmap_lock);
         return MAP_FAILED;
     }
-    num_pages = (file_size - 1) / PGSIZE + 1;
+    num_whole_pages = file_size / PGSIZE;
+    last_page_bytes = file_size % PGSIZE;
     supp_table = &process_current()->supp_page_table;
     for (it = (off_t)addr; it < (off_t)addr + file_size; it += PGSIZE){
         if(get_supp_page(supp_table, (void*)it)){
@@ -354,10 +356,11 @@ mapid_t mmap(int fd, void *addr){
     lock_release(&filesys_lock);
     all_mmappings[slot].addr = addr;
     pd = thread_current()->pagedir;
-    for (index = 0; index < num_pages - 1; index++){
+    for (index = 0; index < num_whole_pages; index++){
         create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
     }
-    create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, (off_t)addr % PGSIZE, true);
+    if(last_page_bytes)
+        create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, last_page_bytes, true);
     cur_proc->mmappings[mapping] = slot;
     lock_release(&mmap_lock);
     return mapping;
