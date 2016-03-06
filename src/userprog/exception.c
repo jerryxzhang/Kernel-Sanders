@@ -140,14 +140,6 @@ static void page_fault(struct intr_frame *f) {
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
     
-    // Access is kernel verifying an address
-    if (!user) {
-        //printf("kernel fault\n");
-        f->eip = (void (*) (void)) f->eax;
-        f->eax = -1;
-        return;
-    }
-
     if(not_present){
       void *upage = pg_round_down(fault_addr);
 
@@ -174,12 +166,13 @@ static void page_fault(struct intr_frame *f) {
         }
       }
     }
-    else if (!user) {
-      // Access is kernel verifying an address
-      //printf("kernel fault\n");
-      f->eip = (void (*) (void)) f->eax;
-      f->eax = -1;
-      return;
+    
+    // Access is kernel verifying an address
+    if (!user) {
+        //printf("kernel fault\n");
+        f->eip = (void (*) (void)) f->eax;
+        f->eax = -1;
+        return;
     }
 
     // Page doesn't exist and isn't a stack access, kill the process

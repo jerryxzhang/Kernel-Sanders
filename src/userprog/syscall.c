@@ -216,7 +216,7 @@ int filesize(int fd){
 int read(int fd, void *buffer, unsigned length){
     int index;
     int bytes_read = -1;
-    if (!w_valid((uint8_t*)buffer) || !w_valid((uint8_t*)((off_t)buffer + length))) {
+    if (!w_valid((uint8_t*)buffer) || !w_valid(((uint8_t*)buffer) + length - 1)) {
         thread_exit(-1);
         return EXIT_FAILURE;
     }

@@ -13,7 +13,6 @@
 enum page_location_type {
 	filesys, /* Incluces zero case (just a filesys where 0 bytes read) */
 	swapslot,
-	kernel,
 };
 
 struct supp_page {

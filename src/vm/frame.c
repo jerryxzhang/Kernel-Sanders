@@ -67,6 +67,7 @@ struct frame *frame_create(int flags) {
 	/* Create and update the frame struct so we can add it to our table. */
 	struct frame *new_frame = (struct frame *)malloc(sizeof(struct frame));
 	new_frame->phys_addr = kpage;
+    new_frame->page = NULL;
 	
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
@@ -137,19 +138,19 @@ void frame_evict(void) {
 	struct frame *victim = frame_choose_victim();
     //printf("evicting frame %x\n", victim->phys_addr);	
 
-	/*! TODO: check my logic. I'm not sure if I correctly handle aliasing by
-	 *  finding any and all pages that use this frame. */
 	struct supp_page *spg = victim->page;
     ASSERT(spg->fr == victim);
-	/* If it is dirty, we need to store the data. */
 	switch (spg->type) {
 		case filesys :
 	        if (pagedir_is_dirty(spg->pd, spg->fr->phys_addr) || 
                        pagedir_is_dirty(spg->pd, spg->vaddr)) {
+	            /* If it is dirty, we need to store the data. */
 				/* Write it back to the file. */
 				file_write_at(spg->fil, spg->fr->phys_addr, 
                            spg->bytes, spg->offset);
                 //printf("Wrote back dirty file\n");
+                pagedir_set_dirty(spg->pd, spg->fr->phys_addr, false);
+                pagedir_set_dirty(spg->pd, spg->vaddr, false);
 		    } else {
                 //printf("Evicting file page, but not dirty\n");
             }

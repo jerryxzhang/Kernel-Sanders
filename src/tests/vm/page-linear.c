@@ -14,7 +14,12 @@ void *memset2(void *dst_, int value, size_t size) {
     ASSERT(dst != NULL || size == 0);
 
     printf("START COPYING\n");
-    while (size -- > 0) *dst++ = value;
+    while (size -- > 0) {
+        *dst++ = value;
+        if (size < 100000) {
+            printf("copied %d\n", size);
+        }
+    }
 
     printf("DONE COPYING\n");
     return dst_;
@@ -26,7 +31,7 @@ test_main (void)
 {
   struct arc4 arc4;
   size_t i;
-printf("BUF AT %x\n", &buf);
+printf("BUF AT %x\n", buf);
   /* Initialize to 0x5a. */
   msg ("initialize");
 

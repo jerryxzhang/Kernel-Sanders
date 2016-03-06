@@ -89,9 +89,7 @@ struct supp_page *get_supp_page(struct hash *table, void *vaddr) {
 bool valid_page_data(struct hash *table, void *vaddr) {
 	/* Get the supplemental page from vaddr. */
 	struct supp_page *spg = get_supp_page(table, vaddr);
-	
-	/* Determine whether data is valid. Obviously not if spg is NULL. */
-	return spg && !(spg->type == kernel);
+    return spg != NULL;	
 }
 
 /*! page_to_new_frame
@@ -130,13 +128,20 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 			if (file_read_at(spg->fil, new_frame->phys_addr, spg->bytes, spg->offset) != (int) spg->bytes) {
 				PANIC("Error with page fault\n");
 			}
+            if (spg->wr && spg->fil == process_current()->file) {
+                // If the page is linked to the current executable, but
+                // is also writable, then turn it into a swap page
+                spg->type = swapslot;
+                spg->fil = NULL;
+                spg->offset = 0;
+                spg->bytes = 0;
+                spg->swap = NULL;
+            //    printf("Paging in data page \n");
+            }
 			break;
 		case swapslot : /* Read from swap slot. */
             //printf("Reading in from slot\n");
 			swap_retrieve_page(new_frame->phys_addr, spg->swap);
-			break;
-		case kernel : /* Shouldn't be here because valid_page_data was true. */
-			PANIC("Unable to handle page fault.\n");
 			break;
 		default : /* Something went terribly wrong if not one of the enums. */
 			PANIC("Unknown error when handling page fault.\n");

@@ -684,6 +684,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     int total_ofs = ofs;
     uint8_t *upage_ = upage;
     uint32_t read_bytes_ = read_bytes;
+    uint32_t zero_bytes_ = zero_bytes;
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
            We will read PAGE_READ_BYTES bytes from FILE
@@ -692,7 +693,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         /* Load this page. */
-        //printf("MEHHHH\n");
+//        printf("Loading segment at addr %x\n", upage);
 
         /* Get a page of memory. */
         struct supp_page *spg = create_filesys_page(
@@ -711,7 +712,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         upage += PGSIZE;
         total_ofs += PGSIZE;
     }
-    //printf("Loaded segment of %d bytes starting at addr %x ending at addr %x and %d writable\n", read_bytes_, upage_, upage, writable);
+    //printf("Loaded segment of %d bytes %d zero starting at addr %x ending at addr %x and %d writable\n", read_bytes_,zero_bytes_, upage_, upage, writable);
     return true;
 }
 
