@@ -292,6 +292,15 @@ void close(int fd){
     }
 }
 
+/* For cleaning up exiting process */
+void free_open_files(int *files){
+    int fd;
+    for (fd = 0; fd < MAX_FILES; fd++){
+        close(fd);
+    }
+}
+
+#ifdef VM
 mapid_t mmap(int fd, void *addr){
     int index;
     off_t file_size;
@@ -400,6 +409,16 @@ void munmap(mapid_t mapping){
             lock_release(&mmap_lock);
     }            
 }
+
+void free_mmappings(int *mmappings){
+    mapid_t i;
+    for (i = 0; i < MAX_MMAPPINGS; i++){
+        munmap(i);
+    }
+}
+
+
+#endif
 
 int getArg(int argnum, struct intr_frame *f) {
     int* addr = (int*) f->esp + argnum;

@@ -377,7 +377,11 @@ void process_exit(int code) {
     p->running = false;
     if (p->file) file_close(p->file);
 
+    // free resources
+    free_mmappings(p->mmappings);
     free_supp_page_table(&p->supp_page_table);
+    free_open_files(p->files);
+    
 
     // Deal with any remaining children
     if (!list_empty(&p->children)) {

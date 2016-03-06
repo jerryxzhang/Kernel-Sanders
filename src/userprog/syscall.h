@@ -35,5 +35,9 @@ void close(int fd);
 mapid_t mmap(int fd, void *addr);
 void munmap(mapid_t);
 
+
+void free_open_files(int *files);
+void free_mmappings(int *mmappings);
+
 #endif /* userprog/syscall.h */
 
