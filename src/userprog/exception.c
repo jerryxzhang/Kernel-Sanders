@@ -148,27 +148,38 @@ static void page_fault(struct intr_frame *f) {
         return;
     }
 
-    void *upage = pg_round_down(fault_addr);
+    if(not_present){
+      void *upage = pg_round_down(fault_addr);
 
-    if (!is_user_vaddr(upage)) kill(f);
+      if (is_user_vaddr(upage)){
 
-    void* esp = in_syscall() ? thread_current()->esp : f->esp;
-    
-    //printf("page faulted %x!\n", fault_addr);
-    if (page_to_new_frame(&process_current()->supp_page_table, upage)) {
-        //printf("User page successfully paged in! %x\n", fault_addr);
-        return;
-    } else if ((uint32_t) fault_addr > ((uint32_t) esp) - 64  
-            && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
-        //printf("GROWING STACK\n"); 
-        struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
-        new_fr->page = create_swapslot_page(
-                &process_current()->supp_page_table, upage, 
-                thread_current()->pagedir, new_fr, true);
-        uint8_t *kpage = new_fr->phys_addr;
+        void* esp = in_syscall() ? thread_current()->esp : f->esp;
+        
+        //printf("page faulted %x!\n", fault_addr);
+        if (page_to_new_frame(&process_current()->supp_page_table, upage)) {
+            //printf("User page successfully paged in! %x\n", fault_addr);
+            return;
+        } 
+        else if ((uint32_t) fault_addr > ((uint32_t) esp) - 64  
+                && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
+            //printf("GROWING STACK\n"); 
+            struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
+            new_fr->page = create_swapslot_page(
+                    &process_current()->supp_page_table, upage, 
+                    thread_current()->pagedir, new_fr, true);
+            uint8_t *kpage = new_fr->phys_addr;
 
-        install_page(upage, kpage, true);
-        return;                
+            install_page(upage, kpage, true);
+            return;                
+        }
+      }
+    }
+    else if (!user) {
+      // Access is kernel verifying an address
+      //printf("kernel fault\n");
+      f->eip = (void (*) (void)) f->eax;
+      f->eax = -1;
+      return;
     }
 
     // Page doesn't exist and isn't a stack access, kill the process

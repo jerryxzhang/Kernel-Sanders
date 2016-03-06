@@ -91,9 +91,7 @@ bool valid_page_data(struct hash *table, void *vaddr) {
 	struct supp_page *spg = get_supp_page(table, vaddr);
 	
 	/* Determine whether data is valid. Obviously not if spg is NULL. */
-	if (spg)
-		return (spg->type == kernel ? false : true);
-	return false;
+	return spg && !(spg->type == kernel);
 }
 
 /*! page_to_new_frame
