@@ -122,7 +122,6 @@ void swap_remove_page(struct swap_slot *swap) {
  */
 int swap_retrieve_page(void *dest, struct swap_slot *swap) {
 
-    printf("Retrieving from swap!\n");
 	ASSERT (swap != NULL);
 	
 	/* Copy the page's contents. */

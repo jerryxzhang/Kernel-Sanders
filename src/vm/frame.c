@@ -31,6 +31,9 @@
 
 struct list frame_table;	/* Frames in the table */
 struct frame *frame_choose_victim(void); /* Chooses the next frame to free. */
+// The frame table is accessed by multiple processes simultaneously. 
+// Stay safe with a lock.
+struct lock frame_lock;
 
 /*! init_frame_table
  * 
@@ -40,6 +43,7 @@ struct frame *frame_choose_victim(void); /* Chooses the next frame to free. */
 void init_frame_table(void) {
 	/* Initialize the frame table list. */
 	list_init(&frame_table);
+    lock_init(&frame_lock);
 }
 
 /*! frame_create
@@ -51,8 +55,11 @@ void init_frame_table(void) {
  *  @return a pointer to the new page
  */
 struct frame *frame_create(int flags) {
-	/* Get a page from the user pool. */
-	void *kpage = palloc_get_page(flags);
+
+	lock_acquire(&frame_lock);
+
+    /* Get a page from the user pool. */	
+    void *kpage = palloc_get_page(flags);
 	
 	/* If couldn't get page, evict and try again. */
 	if (!kpage) {
@@ -73,7 +80,9 @@ struct frame *frame_create(int flags) {
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
 
-    //printf("Allocated new frame! %x\n", kpage);
+//    printf("Allocated new frame! %x\n", kpage);
+
+    lock_release(&frame_lock);
 	
 	return new_frame;
 }
@@ -94,12 +103,11 @@ int frame_free(struct frame *fr) {
 	list_remove(&fr->frame_elem);
 	
 	/* Remove the page so there is space. */
-    // TODO: why does freeing the page cause weird errors with pagedir_destroy
-    // It seems like after the page is freed here, pagedir_destroy attempts the free the same page again?
 	palloc_free_page(fr->phys_addr);
 //	printf("Freeing Frame %x\n", fr->phys_addr);
 
 	free((void*)fr);
+
 	/* Return 0 if successful, 1 otherwise. */
 	return 0;
 }
@@ -137,7 +145,7 @@ struct frame *frame_choose_victim(void) {
  *  @description Evicts a page from a frame to free it for another page's use.
  */
 void frame_evict(struct frame *fr) {
-    //printf("evicting frame %x\n", fr->phys_addr);	
+ //   printf("evicting frame %x\n", fr->phys_addr);	
 
 	struct supp_page *spg = fr->page;
     ASSERT(spg->fr == fr);
