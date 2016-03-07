@@ -72,7 +72,7 @@ void free_supp_page_table(struct hash *table) {
 /*! locate_page
  * 
  *  @description Uses a virtual address to locate the data that was meant
- *  to have been accessed.  A pointer to the data is returned.  If the vaddr
+ *  to have been accessed.  A pointer to the table entry is returned.  If the vaddr
  *  is an invalid pointer, NULL is returned.
  * 
  *  @param vaddr - User virtual address of a page
@@ -94,7 +94,7 @@ struct supp_page *get_supp_page(struct hash *table, void *vaddr) {
 /*! valid_page_data
  * 
  *  @description Returns whether the page with argued virtual address has valid
- *  data.  If the page is in the kernel, the data is invalid.
+ *  data.
  * 
  *  @param vaddr - Virtual address of a page
  * 
@@ -163,7 +163,7 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 	return new_frame;
 }
 
-/*! remove_page
+/*! free_supp_page
  * 
  *  @description Removes a page from the supplemental page table and frees
  *  the page.

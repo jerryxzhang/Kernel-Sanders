@@ -220,9 +220,12 @@ int read(int fd, void *buffer, unsigned length){
         if (index != -1) {
             for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
                 struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                // Grow the stack if needed.
                 if (!p && is_stack_access(buffer, thread_current()->esp)) p = grow_stack((void*)i); 
+                // Page in non resident page.
                 if (!p->fr) 
                     page_to_new_frame(supp_table, (void*) i);
+                // Prevent the page from being evicted
                 p->fr->pinned = true;
             }
             bytes_read = file_read(open_files[index], buffer, length);
@@ -477,6 +480,9 @@ static bool w_valid(uint8_t *uaddr) {
     return put_user(uaddr, (uint8_t)byte);
 }
 
+/**
+ * Return if the given access is a reasonable stack access.
+ */
 bool is_stack_access(const void* addr, void* esp) {
     return ((uint32_t) addr > ((uint32_t) esp - 8) && (uint32_t) addr < (uint32_t) PHYS_BASE);
 }

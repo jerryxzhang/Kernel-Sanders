@@ -142,22 +142,14 @@ static void page_fault(struct intr_frame *f) {
     
     if(not_present){
       void *upage = pg_round_down(fault_addr);
-
       if (is_user_vaddr(upage)){
-
         void* esp = thread_current()->in_sc ? thread_current()->esp : f->esp;
-        
-        //printf("page faulted %x!\n", fault_addr);
         if (page_to_new_frame(&process_current()->supp_page_table, upage)) {
-//            printf("User page successfully paged in! %x\n", upage);
             return;
         } 
         else if (is_stack_access(fault_addr, esp)) {
-//            printf("GROWING STACK\n"); 
             grow_stack(upage);
             return;                
-        } else {
-  //          printf("something was wot %x %x %x\n", thread_current(), esp ,fault_addr);
         }
       }
     }
@@ -175,8 +167,10 @@ static void page_fault(struct intr_frame *f) {
     kill(f);
 }
 
+/**
+ * Grows the stack into the given user page. Returns the page table entry.
+ */
 struct supp_page *grow_stack(void* upage) {
-
     struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
     new_fr->page = create_swapslot_page(
         &process_current()->supp_page_table, upage, 
