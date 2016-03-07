@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -376,9 +377,9 @@ void process_exit(int code) {
     if (p->file) file_close(p->file);
 
     // free resources
-    free_mmappings(p->mmappings);
+    free_mmappings();
     free_supp_page_table(&p->supp_page_table);
-    free_open_files(p->files);
+    free_open_files();
     
 
     // Deal with any remaining children
@@ -688,18 +689,12 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT(ofs % PGSIZE == 0);
     file_seek(file, ofs);
     int total_ofs = ofs;
-    uint8_t *upage_ = upage;
-    uint32_t read_bytes_ = read_bytes;
-    uint32_t zero_bytes_ = zero_bytes;
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
            We will read PAGE_READ_BYTES bytes from FILE
            and zero the final PAGE_ZERO_BYTES bytes. */
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-        /* Load this page. */
-//        printf("Loading segment at addr %x\n", upage);
 
         /* Get a page of memory. */
         struct supp_page *spg = create_filesys_page(
@@ -718,7 +713,6 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         upage += PGSIZE;
         total_ofs += PGSIZE;
     }
-    //printf("Loaded segment of %d bytes %d zero starting at addr %x ending at addr %x and %d writable\n", read_bytes_,zero_bytes_, upage_, upage, writable);
     return true;
 }
 
@@ -757,6 +751,8 @@ static bool setup_stack(void **esp) {
     Returns true on success, false if UPAGE is already mapped or
     if memory allocation fails. */
 bool install_page(void *upage, void *kpage, bool writable) {
+    ASSERT(pg_ofs(upage) == 0);
+    ASSERT(pg_ofs(kpage) == 0);
     struct thread *t = thread_current();
 
     /* Verify that there's not already a page at that virtual

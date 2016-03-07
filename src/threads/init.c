@@ -113,13 +113,11 @@ int main(void) {
     tss_init();
     gdt_init();
 #endif
-    printf("what\n");
     /* Initialize interrupt handlers. */
     intr_init();
     timer_init();
     kbd_init();
     input_init();
-    printf("what\n");
     
 #ifdef USERPROG
     exception_init();
@@ -129,11 +127,8 @@ int main(void) {
 
     /* Start thread scheduler and enable interrupts. */
     thread_start();
-    printf("what\n");
     serial_init_queue();
     timer_calibrate();
-
-    printf("what\n");
 
 #ifdef FILESYS
     /* Initialize file system. */
