@@ -29,11 +29,12 @@
 #include "page.h"
 #include "swap.h"
 
-struct list frame_table;	/* Frames in the table */
-struct frame *frame_choose_victim(void); /* Chooses the next frame to free. */
-// The frame table is accessed by multiple processes simultaneously. 
+static struct list frame_table;	/* Frames in the table */
+ // The frame table is accessed by multiple processes simultaneously. 
 // Stay safe with a lock.
-struct lock frame_lock;
+static struct lock frame_lock;
+struct frame *frame_choose_victim(void); /* Chooses the next frame to free. */
+
 
 /*! init_frame_table
  * 
@@ -155,7 +156,7 @@ struct frame *frame_choose_victim(void) {
  */
 void frame_evict(struct frame *fr) {
     fr->evicting = true;
-    
+
     bool unlock = false;
     if (!lock_held_by_current_thread(&frame_lock)) {
         unlock = true;

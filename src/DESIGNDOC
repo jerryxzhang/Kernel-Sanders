@@ -40,10 +40,14 @@ which parts.
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
 Jerry - 30
+Jack - 40
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
 Jerry - Debugging. also pinning, loader, stack growth, eviction
+Jack - mmap file, debugging, reorganized syscalls, pinning, rewrote read/write 
+       system calls to check permission and pin each page involved and
+       read/write to them separately
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
@@ -57,6 +61,26 @@ not required by the question.
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+in frame.h:
+
+struct frame {
+  void *phys_addr;    /* Address of the page */
+    struct supp_page *page; /* Supplemental page entry. Since there is 
+                               no memory sharing
+                               each frame corresponds to at most one page. */
+  struct list_elem frame_elem; /* Element for keeping a list of frames */
+    int pinned;
+    bool evicting;
+};
+to represent entry in the frame table
+
+in frame.c:
+static struct list frame_table;
+static struct lock frame_lock;
+
+the actual frame table with synchonization
+
 
 ---- ALGORITHMS ----
 
@@ -94,6 +118,47 @@ as an array.
 >> B1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+in page.h:
+struct supp_page {
+  struct frame *fr; /* Frame this is in. */
+  uint32_t *pd; /* Pagedir associated with this page. */
+  void *vaddr; /* Virtual address of associated page. */
+    enum page_location_type type; /* Tells how to get page data. */
+  bool wr; /* True if the memory is writable.  False otherwise. */
+  
+  struct hash_elem elem;
+    
+    /* Only useful for filesys type. */
+  struct file *fil; /* Pointer to file. */
+  int offset; /* Offset from file start to relevant data. */
+  int bytes; /* Number of bytes of relevant data. */
+  
+  /* Only useful for swap type. */
+  struct swap_slot *swap; /* Info about location of data in swap. */
+};
+
+to represent the supplemental page table entry
+
+in process.h process struct:
+
+struct hash supp_page_table;
+
+the supplemental page table for the process
+
+in swap.h:
+struct swap_slot {
+  int slot_num; /* Address of the swap inside the block. */
+  bool in_use; /* True if the swap is used, false if the swap is empty. */
+};
+entry for swap slot book keeping
+
+in swap.c:
+static struct block *swap_table;
+pointer to point to the swap block device
+
+static struct swap_slot *swap_slots;
+pointer to the swap table
 
 ---- ALGORITHMS ----
 
@@ -173,14 +238,45 @@ complex.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+in syscall.h:
+typedef int mapid_t;
+for mmap file id
+
+
+in syscall.c:
+
+struct mmapping {
+    void* addr;
+    struct file *file;
+};
+
+static struct mmapping all_mmappings[MAX_GLOBAL_MAPPINGS];
+static struct lock mmap_lock;
+
+to track all mmapings created
+
+in process.h process struct:
+
+int mmappings[MAX_MMAPPINGS];
+
+to track mmappings of the process
+
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
+When a files is mapped into memory, supplemental page table entries are
+created for the memory section which points to the file mapped as the backing
+file and the page directory is also update to point to the file. When a fault
+occurs, the supplemental page table is consulted, the page will be put into
+frame. If the page is swap, the frame will be populated with the swap data.
+If it's mmaped file, it will populated with the file data.
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+We check the supplemental page table to see if anything is mapped there.
 
 ---- RATIONALE ----
 
@@ -190,6 +286,11 @@ complex.
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+The demand paging requires a bit more book keeping and management than the
+memory mapped files. The memory backed files are already mananged by the
+file system, so we just use those facilities provided. We manage swap
+directly on the block device rather than as files, since files are more
+overhead than necessary.
 
                SURVEY QUESTIONS
                ================

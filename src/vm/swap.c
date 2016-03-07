@@ -29,8 +29,8 @@
 #include "page.h"
 #include "swap.h"
 
-struct block *swap_table;
-struct swap_slot *swap_slots;
+static struct block *swap_table;
+static struct swap_slot *swap_slots;
 
 struct swap_slot *swap_find_empty(void); /* Finds empty page in swap table. */
 
