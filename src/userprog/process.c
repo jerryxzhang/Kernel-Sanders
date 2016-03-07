@@ -138,7 +138,8 @@ pid_t process_execute(const char *file_name) {
     }
 
     /* Create a new thread to execute FILE_NAME. */
-    process_table[pid].thread_ptr = thread_create_ptr(fn_copy, PRI_DEFAULT, start_process, fn_copy, pid);
+    process_table[pid].thread_ptr = thread_create_ptr(fn_copy, PRI_DEFAULT,
+        start_process, fn_copy, pid);
     if (process_table[pid].thread_ptr == NULL) {
         palloc_free_page(fn_copy); 
         process_table_free(&process_table[pid]);
@@ -161,7 +162,8 @@ pid_t process_execute(const char *file_name) {
     }
 
     // Add new process to current children
-    list_push_back(&process_table[thread_current()->pid].children, &process_table[pid].elem);    
+    list_push_back(&process_table[thread_current()->pid].children,
+        &process_table[pid].elem);    
 
     return pid;
 }
@@ -230,7 +232,8 @@ static void start_process(void *file_name_) {
     process_table[pid].loaded = true;
     if (process_table[pid].blocked) {
         process_table[pid].blocked = false;
-        thread_unblock(process_table[process_table[pid].parent_pid].thread_ptr);
+        thread_unblock(
+            process_table[process_table[pid].parent_pid].thread_ptr);
     }
     intr_set_level(old_level);
    
@@ -338,8 +341,9 @@ static void start_process(void *file_name_) {
 int process_wait(pid_t child_id) {
 
     // Ensure that child_id is valid
-    if (child_id < 0 || child_id > MAX_PROCESSES - 1 || !process_table[child_id].valid 
-            || process_table[child_id].parent_pid != thread_current()->pid) {
+    if (child_id < 0 || child_id > MAX_PROCESSES - 1 ||
+        !process_table[child_id].valid || process_table[child_id].parent_pid 
+        != thread_current()->pid) {
         return -1;
     }
 
@@ -628,7 +632,7 @@ done:
 
 /*! Checks whether PHDR describes a valid, loadable segment in
     FILE and returns true if so, false otherwise. */
-static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file) {
+static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file){
     /* p_offset and p_vaddr must have the same page offset. */
     if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK)) 
         return false; 

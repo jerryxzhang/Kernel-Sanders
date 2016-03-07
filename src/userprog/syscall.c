@@ -9,9 +9,8 @@
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "userprog/exception.h"
-
-#ifdef VM
 #include "vm/page.h"
+
 #define MAX_GLOBAL_MAPPINGS MAX_PROCESSES * 2
 
 struct mmapping {
@@ -21,7 +20,6 @@ struct mmapping {
 
 static struct mmapping all_mmappings[MAX_GLOBAL_MAPPINGS];
 static struct lock mmap_lock;
-#endif
 
 #define MAX_GLOBAL_FILES MAX_PROCESSES * 2
 
@@ -44,9 +42,7 @@ static struct file* open_files[MAX_GLOBAL_FILES];
 void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
     lock_init(&filesys_lock);
-    #ifdef VM
     lock_init(&mmap_lock);
-    #endif
 }
 
 static void syscall_handler(struct intr_frame *f) {
@@ -99,14 +95,12 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_CLOSE:
             close(getArg(1, f));
             break;
-        #ifdef VM
         case SYS_MMAP:
             f->eax = mmap(getArg(1, f), (void *) getArg(2, f));
             break;
         case SYS_MUNMAP:
             munmap((mapid_t)getArg(1, f));
             break;
-        #endif
         default:
             printf("Not implemented!\n");
             thread_exit(-1);
@@ -222,25 +216,27 @@ int read(int fd, void *buffer, unsigned length){
             supp_table = &process_current()->supp_page_table;
             if(pg_ofs(buffer)){
                 to_read = PGSIZE - (off_t)pg_ofs(buffer);
-                to_read = length < to_read? length : to_read;
+                to_read = (off_t)length < to_read? (off_t)length : to_read;
             }
             else{
-                to_read = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+                to_read = (off_t)length / PGSIZE ? 
+                            PGSIZE : (off_t)(length % PGSIZE);
             }
-            while (length > 0 && chunk_read){
+            while (length > 0 && chunk_read > 0){
                 if (!w_valid((uint8_t*)buffer)){
                     lock_release(&filesys_lock);
                     thread_exit(-1);
                     return EXIT_FAILURE;
                 }
-                pin_page(supp_table, buffer);
-                bytes_read += (chunk_read = file_read(open_files[index], buffer,
-                    to_read));
-                unpin_page(supp_table, buffer);
+                pin_page(supp_table, (void*)buffer);
+                bytes_read += (chunk_read = file_read(open_files[index],
+                    buffer, to_read));
+                unpin_page(supp_table, (void*)buffer);
                 length -= to_read;
                 page ++;
                 buffer = (void*)((off_t) buffer + to_read);
-                to_read = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+                to_read = (off_t)length / PGSIZE ?
+                            PGSIZE : (off_t)(length % PGSIZE);
             }
         }
         lock_release(&filesys_lock);
@@ -256,8 +252,9 @@ int write(int fd, const void *buffer, unsigned length){
     off_t page;
     struct hash *supp_table;
     if (fd == 1){
-        off_t addr;
-        for (addr = (off_t)buffer; (off_t)addr < (off_t)buffer + length; addr += PGSIZE){
+        void *addr;
+        for (addr = (void*)buffer; addr < (void*)((off_t)buffer + length);
+            addr += PGSIZE){
             if (!r_valid((uint8_t*)addr)){
                 thread_exit(-1);
                 return EXIT_FAILURE;
@@ -276,25 +273,27 @@ int write(int fd, const void *buffer, unsigned length){
             supp_table = &process_current()->supp_page_table;
             if(pg_ofs(buffer)){
                 to_write = PGSIZE - (off_t)pg_ofs(buffer);
-                to_write = length < to_write? length : to_write;
+                to_write = (off_t)length < to_write? (off_t)length : to_write;
             }
             else{
-                to_write = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+                to_write = (off_t)length / PGSIZE ? 
+                            PGSIZE : (off_t)(length % PGSIZE);
             }
-            while (length > 0 && chunk_written){
+            while (length > 0 && chunk_written > 0){
                 if (!r_valid((uint8_t*)buffer)){
                     lock_release(&filesys_lock);
                     thread_exit(-1);
                     return EXIT_FAILURE;
                 }
-                pin_page(supp_table, buffer);
+                pin_page(supp_table, (void*)buffer);
                 bytes_written += (chunk_written = file_write(open_files[index],
                     buffer, to_write));
-                unpin_page(supp_table, buffer);
+                unpin_page(supp_table, (void*)buffer);
                 length -= to_write;
                 page ++;
                 buffer = (void*)((off_t) buffer + to_write);
-                to_write = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+                to_write = (off_t)length / PGSIZE ?
+                            PGSIZE : (off_t)(length % PGSIZE);
             }
         }
         lock_release(&filesys_lock);
@@ -349,7 +348,6 @@ void free_open_files(){
     }
 }
 
-#ifdef VM
 mapid_t mmap(int fd, void *addr){
     int index;
     off_t file_size;
@@ -415,10 +413,12 @@ mapid_t mmap(int fd, void *addr){
     all_mmappings[slot].addr = addr;
     pd = thread_current()->pagedir;
     for (index = 0; index < num_whole_pages; index++){
-        create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, PGSIZE, true);
+        create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index),
+            pd, NULL, handle, index * PGSIZE, PGSIZE, true);
     }
     if(last_page_bytes)
-        create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index), pd, NULL, handle, index * PGSIZE, last_page_bytes, true);
+        create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index),
+            pd, NULL, handle, index * PGSIZE, last_page_bytes, true);
     cur_proc->mmappings[mapping] = slot;
     lock_release(&mmap_lock);
     return mapping;
@@ -445,9 +445,10 @@ void munmap(mapid_t mapping){
             lock_acquire(&filesys_lock);
             file_size = file_length(mm.file);
             supp_table = &process_current()->supp_page_table;
-            for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size; i += PGSIZE){
+            for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size;
+                i += PGSIZE){
                 ASSERT(is_user_vaddr((void*)i));
-                struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                struct supp_page *p = get_supp_page(supp_table, (void*)i);
 
                 if (p->fr) {
                     frame_evict(p->fr);
@@ -469,8 +470,6 @@ void free_mmappings(){
     }
 }
 
-
-#endif
 
 int getArg(int argnum, struct intr_frame *f) {
     int* addr = (int*) f->esp + argnum;
@@ -515,5 +514,6 @@ static bool w_valid(uint8_t *uaddr) {
  * Return if the given access is a reasonable stack access.
  */
 bool is_stack_access(const void* addr, void* esp) {
-    return ((uint32_t) addr > ((uint32_t) esp - 8) && (uint32_t) addr < (uint32_t) PHYS_BASE);
+    return ((uint32_t) addr > ((uint32_t) esp - 8) && (uint32_t) addr <
+        (uint32_t) PHYS_BASE);
 }

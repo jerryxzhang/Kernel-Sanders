@@ -139,20 +139,29 @@ static void page_fault(struct intr_frame *f) {
     not_present = (f->error_code & PF_P) == 0;
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
-    
+
+    #ifdef VM
     if(not_present){
       void *upage = pg_round_down(fault_addr);
-      if (is_user_vaddr(upage)){
-        void* esp = thread_current()->in_sc ? thread_current()->esp : f->esp;
-        if (page_to_new_frame(&process_current()->supp_page_table, upage, false)) {
-            return;
-        } 
-        else if (is_stack_access(fault_addr, esp)) {
-            grow_stack(upage);
-            return;                
+      struct hash *table = &process_current()->supp_page_table;
+      struct supp_page *spg = get_supp_page(table, upage);
+
+        if (is_user_vaddr(upage)){
+            void* esp = thread_current()->in_sc ? thread_current()->esp :
+                f->esp;
+            if (spg){
+                if(write <= spg->wr){
+                    page_to_new_frame(spg, false);
+                    return;
+                }
+            }  
+            else if (is_stack_access(fault_addr, esp)) {
+                grow_stack(upage);
+                return;                
+            }
         }
-      }
     }
+    #endif
     
     // Access is kernel verifying an address
     if (!user) {

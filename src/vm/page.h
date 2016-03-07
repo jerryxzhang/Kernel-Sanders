@@ -33,15 +33,21 @@ struct supp_page {
 	struct swap_slot *swap; /* Info about location of data in swap. */
 };
 
-void init_supp_page_table(struct hash *table); /* Initializes supplemental page table. */
+/* Initializes supplemental page table. */
+void init_supp_page_table(struct hash *table); 
 void free_supp_page_table(struct hash *table_addr);
-struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned); /* Returns valid frame with vaddr expected data. */
+/* Returns valid frame with vaddr expected data. */
+struct frame *page_to_new_frame(struct supp_page *spg, bool pinned); 
 
 /* Functions to create/remove pages in supplemental page table. */
 struct supp_page* get_supp_page(struct hash *table, void* vaddr);
-int free_supp_page(struct hash * table, struct supp_page *spg); /* Removes page from table. */
-struct supp_page *create_filesys_page(struct hash *table, void *vaddr, uint32_t *pd, struct frame *fr, struct file *file, int offset, int bytes, bool writable);
-struct supp_page *create_swapslot_page(struct hash *table, void *vaddr, uint32_t *pd, struct frame *fr, bool writable);
+/* Removes page from table. */
+int free_supp_page(struct hash * table, struct supp_page *spg); 
+struct supp_page *create_filesys_page(struct hash *table, void *vaddr,
+	uint32_t *pd, struct frame *fr, struct file *file, int offset,
+	int bytes, bool writable);
+struct supp_page *create_swapslot_page(struct hash *table, void *vaddr,
+	uint32_t *pd, struct frame *fr, bool writable);
 
 
 void pin_page(struct hash *table, void *vaddr);

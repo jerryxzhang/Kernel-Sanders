@@ -115,17 +115,7 @@ bool valid_page_data(struct hash *table, void *vaddr) {
  * 
  *  @return A pointer to the new frame or NULL if no frame obtained.
  */
-struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
-    ASSERT(is_user_vaddr(vaddr));
-    ASSERT(pg_ofs(vaddr) == 0);
-    
-	/* Make sure the address points to valid data. */
-	if (!valid_page_data(table, vaddr))
-		return NULL;
-	
-	/* Get supplemental page so we know where to look for vaddr data. */
-	struct supp_page *spg = get_supp_page(table, vaddr);
-	
+struct frame *page_to_new_frame(struct supp_page *spg, bool pinned) {
 	ASSERT(!spg->fr || spg->fr->evicting);
     		
 	/* Create a new frame to load vaddr's data into. */
@@ -158,7 +148,7 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
 	}
 		
 	/* Map vaddr to the physical address we just created. */
-	pagedir_set_page(spg->pd, vaddr, new_frame->phys_addr, spg->wr);
+	pagedir_set_page(spg->pd, spg->vaddr, new_frame->phys_addr, spg->wr);
 	
 	return new_frame;
 }
@@ -263,7 +253,7 @@ void pin_page(struct hash *table, void *vaddr){
 		spg->fr->pinned++;
 	}
 	else
-		page_to_new_frame(table, upage, true);
+		page_to_new_frame(spg, true);
 }
 
 void unpin_page(struct hash *table, void *vaddr){
