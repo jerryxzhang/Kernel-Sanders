@@ -378,9 +378,9 @@ void process_exit(int code) {
     if (p->file) file_close(p->file);
 
     // free resources
-    free_mmappings(p->mmappings);
+    free_mmappings();
     free_supp_page_table(&p->supp_page_table);
-    free_open_files(p->files);
+    free_open_files();
     
 
     // Deal with any remaining children
@@ -730,7 +730,7 @@ static bool setup_stack(void **esp) {
     
     void *upage = (void *)(PHYS_BASE - PGSIZE);
     
-    new_fr = frame_create(PAL_USER | PAL_ZERO);
+    new_fr = frame_create(PAL_USER | PAL_ZERO, false);
     new_fr->page = create_swapslot_page(
             &process_current()->supp_page_table, upage, 
             thread_current()->pagedir, new_fr, true);

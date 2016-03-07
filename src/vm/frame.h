@@ -11,10 +11,12 @@ struct frame {
                                each frame corresponds to at most one page. */
 	
 	struct list_elem frame_elem; /* Element for keeping a list of frames */
+    int pinned;
+   	bool evicting;
 };
 
 void init_frame_table(void); /* Initializes the frame table. */
-struct frame *frame_create(int flags); /* Gets a page from user pool and adds it to frame table. */
+struct frame *frame_create(int flags, bool pinned); /* Gets a page from user pool and adds it to frame table. */
 int frame_free(struct frame *fr); /* Frees page and removes frame from table. */
 void frame_evict(struct frame *fr); /* Evicts a page from a frame to free it up. */
 

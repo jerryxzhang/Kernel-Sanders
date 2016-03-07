@@ -215,16 +215,42 @@ int filesize(int fd){
 
 int read(int fd, void *buffer, unsigned length){
     int index;
-    int bytes_read = -1;
-    if (!w_valid((uint8_t*)buffer) || !w_valid(((uint8_t*)buffer) + length - 1)) {
-        thread_exit(-1);
-        return EXIT_FAILURE;
-    }
+    int bytes_read = EXIT_FAILURE;
+    int chunk_read;
+    off_t to_read;
+    off_t page;
+    struct hash *supp_table;
     if (fd >= 0 && fd < MAX_FILES) {
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1) {
-            bytes_read = file_read(open_files[index], buffer, length);
+        if (index != -1 && open_files[index]) {
+            bytes_read = 0;
+            chunk_read = 1;
+            page = 0;
+            supp_table = &process_current()->supp_page_table;
+            if(pg_ofs(buffer)){
+                to_read = PGSIZE - (off_t)pg_ofs(buffer);
+                to_read = length < to_read? length : to_read;
+            }
+            else{
+                to_read = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+            }
+            while (length > 0 && chunk_read){
+                if (!w_valid((uint8_t*)buffer)){
+                    lock_release(&filesys_lock);
+                    thread_exit(-1);
+                    return EXIT_FAILURE;
+                }
+                pin_page(supp_table, buffer);
+                bytes_read += (chunk_read = file_read(open_files[index], buffer,
+                    to_read));
+                unpin_page(supp_table, buffer);
+                length -= to_read;
+                page ++;
+                buffer = (void*)((off_t) buffer + to_read);
+                to_read = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+            }
+
         }
         lock_release(&filesys_lock);
     }
@@ -233,24 +259,57 @@ int read(int fd, void *buffer, unsigned length){
 
 int write(int fd, const void *buffer, unsigned length){
     int index;
-    int bytes_read = -1;
-    if (!r_valid((uint8_t*)buffer)) {
-        thread_exit(-1);
-        return EXIT_FAILURE;
+    int bytes_written = EXIT_FAILURE;
+    int chunk_written;
+    off_t to_write;
+    off_t page;
+    struct hash *supp_table;
+    if (fd == 1){
+        off_t addr;
+        for (addr = (off_t)buffer; (off_t)addr < (off_t)buffer + length; addr += PGSIZE){
+            if (!r_valid((uint8_t*)addr)){
+                thread_exit(-1);
+                return EXIT_FAILURE;
+            }
+        }
+        putbuf(buffer, length);
+        return length;
     }
     if (fd >= 0 && fd < MAX_FILES) {
-        if (fd == 1) {
-            putbuf(buffer, length);
-            return (int)length;
-        }
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1) {
-            bytes_read = file_write(open_files[index], buffer, length);
+        if (index != -1 && open_files[index]) {
+            bytes_written = 0;
+            chunk_written = 1;
+            page = 0;
+            supp_table = &process_current()->supp_page_table;
+            if(pg_ofs(buffer)){
+                to_write = PGSIZE - (off_t)pg_ofs(buffer);
+                to_write = length < to_write? length : to_write;
+            }
+            else{
+                to_write = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+            }
+            while (length > 0 && chunk_written){
+                if (!r_valid((uint8_t*)buffer)){
+                    lock_release(&filesys_lock);
+                    thread_exit(-1);
+                    return EXIT_FAILURE;
+                }
+                pin_page(supp_table, buffer);
+                bytes_written += (chunk_written = file_write(open_files[index],
+                    buffer, to_write));
+                unpin_page(supp_table, buffer);
+                length -= to_write;
+                page ++;
+                buffer = (void*)((off_t) buffer + to_write);
+                to_write = length / PGSIZE ? PGSIZE : (length % PGSIZE);
+            }
+
         }
         lock_release(&filesys_lock);
     }
-    return bytes_read;
+    return bytes_written;
 }
 
 void seek(int fd, unsigned position){
@@ -293,7 +352,7 @@ void close(int fd){
 }
 
 /* For cleaning up exiting process */
-void free_open_files(int *files){
+void free_open_files(){
     int fd;
     for (fd = 0; fd < MAX_FILES; fd++){
         close(fd);
@@ -399,7 +458,10 @@ void munmap(mapid_t mapping){
             for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size; i += PGSIZE){
                 ASSERT(is_user_vaddr((void*)i));
                 struct supp_page *p = get_supp_page(supp_table, (void*) i);
-                if (p->fr) frame_evict(p->fr);
+
+                if (p->fr) {
+                    frame_evict(p->fr);
+                }
                 free_supp_page(supp_table, p);
             }
             file_close(mm.file);
@@ -410,7 +472,7 @@ void munmap(mapid_t mapping){
     }            
 }
 
-void free_mmappings(int *mmappings){
+void free_mmappings(){
     mapid_t i;
     for (i = 0; i < MAX_MMAPPINGS; i++){
         munmap(i);

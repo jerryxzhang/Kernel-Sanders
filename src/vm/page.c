@@ -115,7 +115,7 @@ bool valid_page_data(struct hash *table, void *vaddr) {
  * 
  *  @return A pointer to the new frame or NULL if no frame obtained.
  */
-struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
+struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
     ASSERT(is_user_vaddr(vaddr));
     ASSERT(pg_ofs(vaddr) == 0);
     
@@ -127,10 +127,10 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 	/* Get supplemental page so we know where to look for vaddr data. */
 	struct supp_page *spg = get_supp_page(table, vaddr);
 	
-	ASSERT(!spg->fr);
+	ASSERT(!spg->fr || spg->fr->evicting);
     		
 	/* Create a new frame to load vaddr's data into. */
-    struct frame *new_frame = frame_create(PAL_USER | PAL_ZERO);
+    struct frame *new_frame = frame_create(PAL_USER | PAL_ZERO, pinned);
     new_frame->page = spg;
     spg->fr = new_frame;
 	
@@ -252,4 +252,30 @@ struct supp_page *create_swapslot_page(struct hash *table, void *vaddr, uint32_t
     new_page->swap = NULL;
 	
 	return new_page;
+}
+
+
+void pin_page(struct hash *table, void *vaddr){
+	void *upage = pg_round_down(vaddr);
+	struct supp_page *spg = get_supp_page(table, upage);
+	while (spg->fr && spg->fr->evicting) {
+
+	}
+	ASSERT(spg);
+	if (spg->fr){
+		ASSERT(spg->fr->pinned >= 0);
+		spg->fr->pinned++;
+	}
+	else
+		page_to_new_frame(table, upage, true);
+}
+
+void unpin_page(struct hash *table, void *vaddr){
+	void *upage = pg_round_down(vaddr);
+	struct supp_page *spg = get_supp_page(table, upage);
+	ASSERT(spg);
+	ASSERT(spg->fr);
+	ASSERT(spg->fr->pinned > 0);
+	ASSERT(!spg->fr->evicting);
+	spg->fr->pinned--;
 }

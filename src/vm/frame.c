@@ -54,7 +54,7 @@ void init_frame_table(void) {
  *  
  *  @return a pointer to the new page
  */
-struct frame *frame_create(int flags) {
+struct frame *frame_create(int flags, bool pinned) {
 
 	lock_acquire(&frame_lock);
 
@@ -75,6 +75,8 @@ struct frame *frame_create(int flags) {
 	struct frame *new_frame = (struct frame *)malloc(sizeof(struct frame));
 	new_frame->phys_addr = kpage;
     new_frame->page = NULL;
+    new_frame->evicting = false;
+    new_frame->pinned = (int)pinned;
     pagedir_set_dirty(thread_current()->pagedir, kpage, false);
 	
 	/* Add the ne page to the frame table. */
@@ -129,7 +131,8 @@ struct frame *frame_choose_victim(void) {
         // If the frame has been accessed, give it a second chance by putting 
         // it back in the queue with access bit reset
         if (pagedir_is_accessed(cur_page->pd, cur_frame->phys_addr) ||
-                pagedir_is_accessed(cur_page->pd, cur_page->vaddr)) {
+                pagedir_is_accessed(cur_page->pd, cur_page->vaddr) ||
+                cur_frame->evicting || cur_frame->pinned) {
             pagedir_set_accessed(cur_page->pd, cur_frame->phys_addr, false);
             pagedir_set_accessed(cur_page->pd, cur_page->vaddr, false);
             list_push_back(&frame_table, cur);
@@ -146,9 +149,11 @@ struct frame *frame_choose_victim(void) {
  */
 void frame_evict(struct frame *fr) {
  //   printf("evicting frame %x\n", fr->phys_addr);	
-
+    ASSERT(!fr->evicting);
+    fr->evicting = true;
 	struct supp_page *spg = fr->page;
     ASSERT(spg->fr == fr);
+    ASSERT(fr->evicting);
 	switch (spg->type) {
 		case filesys :
 	        if (//pagedir_is_dirty(spg->pd, fr->phys_addr) || 
