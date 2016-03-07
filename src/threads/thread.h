@@ -137,6 +137,7 @@ struct thread {
 
     /** Needed for stack growth through a system call. */
     void* esp;                          /*!< Thread's stack pointer. */
+    bool in_sc;                      /* Whether the thread is in a system call. */
 
     /*! Owned by thread.c. */
     /**@{*/

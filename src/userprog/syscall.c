@@ -33,8 +33,6 @@ int getArg(int argnum, struct intr_frame *f);
    for reading, so only need to call w_valid().
  */
 
-bool in_sc;
-
 static bool r_valid(uint8_t *uaddr);
 static bool w_valid(uint8_t *uaddr);
 static struct lock filesys_lock;
@@ -48,19 +46,12 @@ void syscall_init(void) {
     #ifdef VM
     lock_init(&mmap_lock);
     #endif
-    in_sc = false;
-}
-
-bool in_syscall(void) {
-    return in_sc;
 }
 
 static void syscall_handler(struct intr_frame *f) {
     if (!w_valid(f->esp)) thread_exit(-1);
-
-    in_sc = true;
-
     thread_current()->esp = f->esp;
+    thread_current()->in_sc = true;
 
     int syscall_num = getArg(0, f);
     
@@ -120,7 +111,7 @@ static void syscall_handler(struct intr_frame *f) {
             thread_exit(-1);
             break;
     }
-    in_sc = false;
+    thread_current()->in_sc = false;
 }
 
 void halt(void){
@@ -215,6 +206,8 @@ int filesize(int fd){
 
 int read(int fd, void *buffer, unsigned length){
     int index;
+    struct hash *supp_table = &process_current()->supp_page_table;
+    uint32_t i;
     int bytes_read = -1;
     if (!w_valid((uint8_t*)buffer) || !w_valid(((uint8_t*)buffer) + length - 1)) {
         thread_exit(-1);
@@ -224,7 +217,17 @@ int read(int fd, void *buffer, unsigned length){
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1) {
+            for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
+                struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                if (!p->fr) 
+                    page_to_new_frame(supp_table, (void*) i);
+                p->fr->pinned = true;
+            }
             bytes_read = file_read(open_files[index], buffer, length);
+            for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
+                struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                p->fr->pinned = false;
+            }
         }
         lock_release(&filesys_lock);
     }
@@ -234,6 +237,8 @@ int read(int fd, void *buffer, unsigned length){
 int write(int fd, const void *buffer, unsigned length){
     int index;
     int bytes_read = -1;
+    uint32_t i;
+    struct hash *supp_table = &process_current()->supp_page_table;
     if (!r_valid((uint8_t*)buffer)) {
         thread_exit(-1);
         return EXIT_FAILURE;
@@ -246,7 +251,17 @@ int write(int fd, const void *buffer, unsigned length){
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1) {
+            for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
+                struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                if (!p->fr) 
+                    page_to_new_frame(supp_table, (void*) i);
+                p->fr->pinned = true;
+            }
             bytes_read = file_write(open_files[index], buffer, length);
+            for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
+                struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                p->fr->pinned = false;
+            }
         }
         lock_release(&filesys_lock);
     }

@@ -145,14 +145,14 @@ static void page_fault(struct intr_frame *f) {
 
       if (is_user_vaddr(upage)){
 
-        void* esp = in_syscall() ? thread_current()->esp : f->esp;
+        void* esp = thread_current()->in_sc ? thread_current()->esp : f->esp;
         
         //printf("page faulted %x!\n", fault_addr);
         if (page_to_new_frame(&process_current()->supp_page_table, upage)) {
 //            printf("User page successfully paged in! %x\n", upage);
             return;
         } 
-        else if ((uint32_t) fault_addr > ((uint32_t) esp) - 64  
+        else if ((uint32_t) fault_addr > ((uint32_t) esp - 8)  
                 && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
 //            printf("GROWING STACK\n"); 
             struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
@@ -163,13 +163,16 @@ static void page_fault(struct intr_frame *f) {
 
             install_page(upage, kpage, true);
             return;                
+        } else {
+  //          printf("something was wot %x %x %x\n", thread_current(), esp ,fault_addr);
         }
       }
     }
     
     // Access is kernel verifying an address
     if (!user) {
-        //printf("kernel fault\n");
+        if (fault_addr == NULL) PANIC("Kernel NullPointer Fault!\n");
+        
         f->eip = (void (*) (void)) f->eax;
         f->eax = -1;
         return;

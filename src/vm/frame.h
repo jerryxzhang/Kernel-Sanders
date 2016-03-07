@@ -6,9 +6,11 @@
 
 struct frame {
 	void *phys_addr;		/* Address of the page */
-    struct supp_page *page; /* Supplemental page entry.  Null if it does
-                               not exist. Since there is no memory sharing
+    struct supp_page *page; /* Supplemental page entry. Since there is 
+                               no memory sharing
                                each frame corresponds to at most one page. */
+    bool pinned;
+
 	
 	struct list_elem frame_elem; /* Element for keeping a list of frames */
 };
