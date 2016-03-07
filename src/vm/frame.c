@@ -68,11 +68,11 @@ struct frame *frame_create(int flags) {
 	}
 
     if (!kpage) {
-        PANIC("EVICTION FAILLLEEDDDD!!!!11");
+        PANIC("Page eviction failed.");
     }
 
 	/* Create and update the frame struct so we can add it to our table. */
-	struct frame *new_frame = (struct frame *)malloc(sizeof(struct frame));
+	struct frame *new_frame = (struct frame *)calloc(1, sizeof(struct frame));
 	new_frame->phys_addr = kpage;
     new_frame->page = NULL;
     new_frame->pinned = false;
@@ -80,8 +80,6 @@ struct frame *frame_create(int flags) {
 	
 	/* Add the ne page to the frame table. */
 	list_push_back(&frame_table, &new_frame->frame_elem);
-
-//    printf("Allocated new frame! %x\n", kpage);
 
     lock_release(&frame_lock);
 	
@@ -100,14 +98,23 @@ struct frame *frame_create(int flags) {
 int frame_free(struct frame *fr) {
     if (!fr) return 1;
 
+    bool unlock = false;
+    if (!lock_held_by_current_thread(&frame_lock)) {
+        unlock = true;
+        lock_acquire(&frame_lock);
+    }
+
 	/* Remove the frame from the frame table. */
 	list_remove(&fr->frame_elem);
+    
+    pagedir_clear_page(fr->page->pd, fr->page->vaddr);
 	
 	/* Remove the page so there is space. */
 	palloc_free_page(fr->phys_addr);
-//	printf("Freeing Frame %x\n", fr->phys_addr);
 
 	free((void*)fr);
+
+    if (unlock) lock_release(&frame_lock);
 
 	/* Return 0 if successful, 1 otherwise. */
 	return 0;
@@ -126,11 +133,9 @@ struct frame *frame_choose_victim(void) {
 	    struct list_elem* cur = list_pop_front(&frame_table);
         struct frame *cur_frame = list_entry(cur, struct frame, frame_elem);
         struct supp_page *cur_page = cur_frame->page;
-
         // If the frame has been accessed, give it a second chance by putting 
         // it back in the queue with access bit reset
-        if (pagedir_is_accessed(cur_page->pd, cur_frame->phys_addr) ||
-                pagedir_is_accessed(cur_page->pd, cur_page->vaddr) ||
+        if (pagedir_is_accessed(cur_page->pd, cur_page->vaddr) ||
                 cur_frame->pinned) {
             pagedir_set_accessed(cur_page->pd, cur_frame->phys_addr, false);
             pagedir_set_accessed(cur_page->pd, cur_page->vaddr, false);
@@ -147,28 +152,29 @@ struct frame *frame_choose_victim(void) {
  *  @description Evicts a page from a frame to free it for another page's use.
  */
 void frame_evict(struct frame *fr) {
- //   printf("evicting frame %x\n", fr->phys_addr);	
+    
+    bool unlock = false;
+    if (!lock_held_by_current_thread(&frame_lock)) {
+        unlock = true;
+        lock_acquire(&frame_lock);
+    }
+    ASSERT(fr);
 
 	struct supp_page *spg = fr->page;
     ASSERT(spg->fr == fr);
 	switch (spg->type) {
 		case filesys :
-	        if (//pagedir_is_dirty(spg->pd, fr->phys_addr) || 
-                       pagedir_is_dirty(spg->pd, spg->vaddr)) {
+	        if (pagedir_is_dirty(spg->pd, spg->vaddr)) {
 	            /* If it is dirty, we need to store the data. */
 				/* Write it back to the file. */
 				file_write_at(spg->fil, spg->fr->phys_addr, 
                            spg->bytes, spg->offset);
-//                printf("Wrote back dirty file\n");
                 pagedir_set_dirty(spg->pd, spg->vaddr, false);
-		    } else {
-  //              printf("Evicting file page, but not dirty\n");
-            }
+		    }
 			break;
 		case swapslot :
 		    /* Write to a swap. */
 			spg->swap = swap_put_page(spg->fr->phys_addr);
-            //printf("wrote to swap %d\n", spg->swap->slot_num);
 			break;
 		default :
 			PANIC ("Error evicting frame.\n");
@@ -176,7 +182,7 @@ void frame_evict(struct frame *fr) {
 	}
 
     /* Clear the page and frame. */
-    pagedir_clear_page(spg->pd, spg->vaddr);
     ASSERT(!frame_free(spg->fr));
     spg->fr = NULL;
+    if (unlock) lock_release(&frame_lock);
 }

@@ -8,6 +8,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
+#include "userprog/exception.h"
 
 #ifdef VM
 #include "vm/page.h"
@@ -219,6 +220,7 @@ int read(int fd, void *buffer, unsigned length){
         if (index != -1) {
             for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
                 struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                if (!p && is_stack_access(buffer, thread_current()->esp)) p = grow_stack((void*)i); 
                 if (!p->fr) 
                     page_to_new_frame(supp_table, (void*) i);
                 p->fr->pinned = true;
@@ -253,6 +255,7 @@ int write(int fd, const void *buffer, unsigned length){
         if (index != -1) {
             for (i = (uint32_t) pg_round_down(buffer); i < (uint32_t) pg_round_up(buffer + length); i += PGSIZE) {
                 struct supp_page *p = get_supp_page(supp_table, (void*) i);
+                if (!p && is_stack_access(buffer, thread_current()->esp)) p = grow_stack((void*)i); 
                 if (!p->fr) 
                     page_to_new_frame(supp_table, (void*) i);
                 p->fr->pinned = true;
@@ -308,7 +311,7 @@ void close(int fd){
 }
 
 /* For cleaning up exiting process */
-void free_open_files(int *files){
+void free_open_files(void){
     int fd;
     for (fd = 0; fd < MAX_FILES; fd++){
         close(fd);
@@ -425,7 +428,7 @@ void munmap(mapid_t mapping){
     }            
 }
 
-void free_mmappings(int *mmappings){
+void free_mmappings(void){
     mapid_t i;
     for (i = 0; i < MAX_MMAPPINGS; i++){
         munmap(i);
@@ -472,4 +475,8 @@ static bool w_valid(uint8_t *uaddr) {
     if (byte == -1)
         return false;
     return put_user(uaddr, (uint8_t)byte);
+}
+
+bool is_stack_access(const void* addr, void* esp) {
+    return ((uint32_t) addr > ((uint32_t) esp - 8) && (uint32_t) addr < (uint32_t) PHYS_BASE);
 }

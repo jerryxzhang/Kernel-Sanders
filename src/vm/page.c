@@ -123,7 +123,6 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 	if (!valid_page_data(table, vaddr))
 		return NULL;
 	
-    //printf("Paging %x to new frame\n", vaddr);
 	/* Get supplemental page so we know where to look for vaddr data. */
 	struct supp_page *spg = get_supp_page(table, vaddr);
 	
@@ -137,7 +136,6 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
 	/* Populate new frame based on what vaddr supposedly pointed to. */
 	switch (spg->type) {
 		case filesys : /* Read from file for specified number of bytes. */
-            //printf("Reading in from file\n");
 			if (file_read_at(spg->fil, new_frame->phys_addr, spg->bytes, spg->offset) != (int) spg->bytes) {
 				PANIC("Error with page fault\n");
 			}
@@ -149,11 +147,9 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr) {
                 spg->offset = 0;
                 spg->bytes = 0;
                 spg->swap = NULL;
-            //    printf("Paging in data page \n");
             }
 			break;
 		case swapslot : /* Read from swap slot. */
-            //printf("Reading in from slot\n");
 			swap_retrieve_page(new_frame->phys_addr, spg->swap);
 			break;
 		default : /* Something went terribly wrong if not one of the enums. */

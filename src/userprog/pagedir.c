@@ -176,7 +176,9 @@ bool pagedir_is_accessed(uint32_t *pd, const void *vpage) {
 /*! Sets the accessed bit to ACCESSED in the PTE for virtual page
     VPAGE in PD. */
 void pagedir_set_accessed(uint32_t *pd, const void *vpage, bool accessed) {
+//    printf("mehh\n");
     uint32_t *pte = lookup_page(pd, vpage, false);
+  //  printf("dehh\n");
     if (pte != NULL) {
         if (accessed) {
             *pte |= PTE_A;

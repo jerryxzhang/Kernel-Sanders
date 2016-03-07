@@ -10,5 +10,6 @@
 void exception_init(void);
 void exception_print_stats(void);
 
+struct supp_page *grow_stack(void* upage);
 #endif /* userprog/exception.h */
 

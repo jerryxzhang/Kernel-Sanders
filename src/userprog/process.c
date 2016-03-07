@@ -37,7 +37,6 @@ struct process* process_current(void) {
  */
 void process_init(void) {
     int i;
-    ASSERT(intr_get_level() == INTR_OFF);
 
     list_init(&free_list);
 
@@ -124,7 +123,6 @@ void process_table_free(struct process *p) {
 pid_t process_execute(const char *file_name) {
     char *fn_copy;
     pid_t pid;
-    
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = palloc_get_page(0);
@@ -337,6 +335,7 @@ static void start_process(void *file_name_) {
     This function will be implemented in problem 2-2.  For now, it does
     nothing. */
 int process_wait(pid_t child_id) {
+
     // Ensure that child_id is valid
     if (child_id < 0 || child_id > MAX_PROCESSES - 1 || !process_table[child_id].valid 
             || process_table[child_id].parent_pid != thread_current()->pid) {
@@ -374,7 +373,6 @@ void process_exit(int code) {
     uint32_t *pd;
 
     p->return_code = code;
-    p->running = false;
     if (p->file) file_close(p->file);
 
     // free resources
@@ -403,6 +401,15 @@ void process_exit(int code) {
     if (p->parent_pid == -1) {
         process_table_free(p);
     }    
+    
+    // Unblock the parent if it is waiting
+    enum intr_level old_level = intr_disable();
+    if (p->blocked) {
+        p->blocked = false;
+        thread_unblock(process_table[p->parent_pid].thread_ptr);
+    }
+     
+    p->running = false;
 
     /* Destroy the current process's page directory and switch back
        to the kernel-only page directory. */
@@ -420,12 +427,6 @@ void process_exit(int code) {
         pagedir_destroy(pd);
     }
 
-    // Unblock the parent if it is waiting
-    enum intr_level old_level = intr_disable();
-    if (p->blocked) {
-        p->blocked = false;
-        thread_unblock(process_table[p->parent_pid].thread_ptr);
-    }
     intr_set_level(old_level);
 }
 

@@ -34,10 +34,10 @@ void close(int fd);
 
 mapid_t mmap(int fd, void *addr);
 void munmap(mapid_t);
+bool is_stack_access(const void* addr, void* esp);
 
-
-void free_open_files(int *files);
-void free_mmappings(int *mmappings);
+void free_open_files(void);
+void free_mmappings(void);
 
 #endif /* userprog/syscall.h */
 

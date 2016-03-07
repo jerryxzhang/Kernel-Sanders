@@ -56,9 +56,8 @@ void init_swap_table (void) {
 	 * one entry in the array for every page in the swap block. */
 	int num_slots = block_size(swap_table) * BLOCK_SECTOR_SIZE / PGSIZE;
 	swap_slots = (struct swap_slot *)malloc(num_slots * sizeof(struct swap_slot));
-    
-    //printf("Swap initialized with %d slots\n", num_slots);
-	/* Initialize swap array.  Each successive element in the array points
+	
+    /* Initialize swap array.  Each successive element in the array points
 	 * to the next entry in the swap table, each of which are separated by
 	 * PGSIZE.  No swap entries should be in_use at this point. */
 	int i;
@@ -85,7 +84,6 @@ struct swap_slot *swap_find_empty(void) {
 	for (i = 0; i < num_swaps; i++) {
 		/* Attribute in_use false if the slot is free. */
 		if (!swap_slots[i].in_use) {
-            //printf("Allocated empty swap %d\n", i);
 			swap_slots[i].in_use = true;
             return &swap_slots[i];
         }

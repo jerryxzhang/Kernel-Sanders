@@ -152,16 +152,9 @@ static void page_fault(struct intr_frame *f) {
 //            printf("User page successfully paged in! %x\n", upage);
             return;
         } 
-        else if ((uint32_t) fault_addr > ((uint32_t) esp - 8)  
-                && (uint32_t) fault_addr < (uint32_t) PHYS_BASE) {
+        else if (is_stack_access(fault_addr, esp)) {
 //            printf("GROWING STACK\n"); 
-            struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
-            new_fr->page = create_swapslot_page(
-                    &process_current()->supp_page_table, upage, 
-                    thread_current()->pagedir, new_fr, true);
-            uint8_t *kpage = new_fr->phys_addr;
-
-            install_page(upage, kpage, true);
+            grow_stack(upage);
             return;                
         } else {
   //          printf("something was wot %x %x %x\n", thread_current(), esp ,fault_addr);
@@ -180,5 +173,17 @@ static void page_fault(struct intr_frame *f) {
 
     // Page doesn't exist and isn't a stack access, kill the process
     kill(f);
+}
+
+struct supp_page *grow_stack(void* upage) {
+
+    struct frame *new_fr = frame_create(PAL_USER | PAL_ZERO);
+    new_fr->page = create_swapslot_page(
+        &process_current()->supp_page_table, upage, 
+        thread_current()->pagedir, new_fr, true);
+    uint8_t *kpage = new_fr->phys_addr;
+
+    install_page(upage, kpage, true);
+    return new_fr->page;
 }
 
