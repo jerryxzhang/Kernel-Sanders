@@ -154,8 +154,6 @@ struct frame *frame_choose_victim(void) {
  *  @description Evicts a page from a frame to free it for another page's use.
  */
 void frame_evict(struct frame *fr) {
- //   printf("evicting frame %x\n", fr->phys_addr);	
-    ASSERT(!fr->evicting);
     fr->evicting = true;
     
     bool unlock = false;
@@ -163,7 +161,7 @@ void frame_evict(struct frame *fr) {
         unlock = true;
         lock_acquire(&frame_lock);
     }
-    ASSERT(fr);
+    
 	struct supp_page *spg = fr->page;
     ASSERT(spg->fr == fr);
     ASSERT(fr->evicting);
