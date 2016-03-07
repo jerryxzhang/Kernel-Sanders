@@ -113,17 +113,17 @@ int main(void) {
     tss_init();
     gdt_init();
 #endif
-
     /* Initialize interrupt handlers. */
     intr_init();
     timer_init();
     kbd_init();
     input_init();
+    
 #ifdef USERPROG
     exception_init();
     syscall_init();
     process_init();
-#endif
+#endif    
 
     /* Start thread scheduler and enable interrupts. */
     thread_start();
@@ -143,6 +143,7 @@ int main(void) {
     init_swap_table();
 #endif
 
+
     printf("Boot complete.\n");
 
     /* Run actions specified on kernel command line. */
@@ -152,7 +153,7 @@ int main(void) {
     shutdown();
     thread_exit(-1);
 }
-
+
 /*! Clear the "BSS", a segment that should be initialized to
     zeros.  It isn't actually stored on disk or zeroed by the
     kernel loader, so we have to zero it ourselves.

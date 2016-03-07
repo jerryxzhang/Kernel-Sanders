@@ -8,6 +8,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
+#include "userprog/exception.h"
 
 #ifdef VM
 #include "vm/page.h"
@@ -33,8 +34,6 @@ int getArg(int argnum, struct intr_frame *f);
    for reading, so only need to call w_valid().
  */
 
-bool in_sc;
-
 static bool r_valid(uint8_t *uaddr);
 static bool w_valid(uint8_t *uaddr);
 static struct lock filesys_lock;
@@ -48,19 +47,12 @@ void syscall_init(void) {
     #ifdef VM
     lock_init(&mmap_lock);
     #endif
-    in_sc = false;
-}
-
-bool in_syscall(void) {
-    return in_sc;
 }
 
 static void syscall_handler(struct intr_frame *f) {
     if (!w_valid(f->esp)) thread_exit(-1);
-
-    in_sc = true;
-
     thread_current()->esp = f->esp;
+    thread_current()->in_sc = true;
 
     int syscall_num = getArg(0, f);
     
@@ -120,7 +112,7 @@ static void syscall_handler(struct intr_frame *f) {
             thread_exit(-1);
             break;
     }
-    in_sc = false;
+    thread_current()->in_sc = false;
 }
 
 void halt(void){
@@ -250,7 +242,6 @@ int read(int fd, void *buffer, unsigned length){
                 buffer = (void*)((off_t) buffer + to_read);
                 to_read = length / PGSIZE ? PGSIZE : (length % PGSIZE);
             }
-
         }
         lock_release(&filesys_lock);
     }
@@ -305,7 +296,6 @@ int write(int fd, const void *buffer, unsigned length){
                 buffer = (void*)((off_t) buffer + to_write);
                 to_write = length / PGSIZE ? PGSIZE : (length % PGSIZE);
             }
-
         }
         lock_release(&filesys_lock);
     }
@@ -519,4 +509,11 @@ static bool w_valid(uint8_t *uaddr) {
     if (byte == -1)
         return false;
     return put_user(uaddr, (uint8_t)byte);
+}
+
+/**
+ * Return if the given access is a reasonable stack access.
+ */
+bool is_stack_access(const void* addr, void* esp) {
+    return ((uint32_t) addr > ((uint32_t) esp - 8) && (uint32_t) addr < (uint32_t) PHYS_BASE);
 }

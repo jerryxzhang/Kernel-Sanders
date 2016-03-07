@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -37,7 +38,6 @@ struct process* process_current(void) {
  */
 void process_init(void) {
     int i;
-    ASSERT(intr_get_level() == INTR_OFF);
 
     list_init(&free_list);
 
@@ -124,7 +124,6 @@ void process_table_free(struct process *p) {
 pid_t process_execute(const char *file_name) {
     char *fn_copy;
     pid_t pid;
-    
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = palloc_get_page(0);
@@ -337,6 +336,7 @@ static void start_process(void *file_name_) {
     This function will be implemented in problem 2-2.  For now, it does
     nothing. */
 int process_wait(pid_t child_id) {
+
     // Ensure that child_id is valid
     if (child_id < 0 || child_id > MAX_PROCESSES - 1 || !process_table[child_id].valid 
             || process_table[child_id].parent_pid != thread_current()->pid) {
@@ -374,7 +374,6 @@ void process_exit(int code) {
     uint32_t *pd;
 
     p->return_code = code;
-    p->running = false;
     if (p->file) file_close(p->file);
 
     // free resources
@@ -403,6 +402,15 @@ void process_exit(int code) {
     if (p->parent_pid == -1) {
         process_table_free(p);
     }    
+    
+    // Unblock the parent if it is waiting
+    enum intr_level old_level = intr_disable();
+    if (p->blocked) {
+        p->blocked = false;
+        thread_unblock(process_table[p->parent_pid].thread_ptr);
+    }
+     
+    p->running = false;
 
     /* Destroy the current process's page directory and switch back
        to the kernel-only page directory. */
@@ -420,12 +428,6 @@ void process_exit(int code) {
         pagedir_destroy(pd);
     }
 
-    // Unblock the parent if it is waiting
-    enum intr_level old_level = intr_disable();
-    if (p->blocked) {
-        p->blocked = false;
-        thread_unblock(process_table[p->parent_pid].thread_ptr);
-    }
     intr_set_level(old_level);
 }
 
@@ -687,18 +689,12 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT(ofs % PGSIZE == 0);
     file_seek(file, ofs);
     int total_ofs = ofs;
-    uint8_t *upage_ = upage;
-    uint32_t read_bytes_ = read_bytes;
-    uint32_t zero_bytes_ = zero_bytes;
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
            We will read PAGE_READ_BYTES bytes from FILE
            and zero the final PAGE_ZERO_BYTES bytes. */
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-        /* Load this page. */
-//        printf("Loading segment at addr %x\n", upage);
 
         /* Get a page of memory. */
         struct supp_page *spg = create_filesys_page(
@@ -717,7 +713,6 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         upage += PGSIZE;
         total_ofs += PGSIZE;
     }
-    //printf("Loaded segment of %d bytes %d zero starting at addr %x ending at addr %x and %d writable\n", read_bytes_,zero_bytes_, upage_, upage, writable);
     return true;
 }
 
@@ -756,6 +751,8 @@ static bool setup_stack(void **esp) {
     Returns true on success, false if UPAGE is already mapped or
     if memory allocation fails. */
 bool install_page(void *upage, void *kpage, bool writable) {
+    ASSERT(pg_ofs(upage) == 0);
+    ASSERT(pg_ofs(kpage) == 0);
     struct thread *t = thread_current();
 
     /* Verify that there's not already a page at that virtual

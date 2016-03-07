@@ -312,6 +312,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
 void thread_block(void) {
     ASSERT(!intr_context());
     ASSERT(intr_get_level() == INTR_OFF);
+    ASSERT(thread_current());
 
     thread_current()->status = THREAD_BLOCKED;
     schedule();
@@ -699,7 +700,6 @@ static void schedule(void) {
     ASSERT(intr_get_level() == INTR_OFF);
     ASSERT(cur->status != THREAD_RUNNING);
     ASSERT(is_thread(next));
-
     if (cur != next)
         prev = switch_threads(cur, next);
     thread_schedule_tail(prev);

@@ -72,7 +72,7 @@ void free_supp_page_table(struct hash *table) {
 /*! locate_page
  * 
  *  @description Uses a virtual address to locate the data that was meant
- *  to have been accessed.  A pointer to the data is returned.  If the vaddr
+ *  to have been accessed.  A pointer to the table entry is returned.  If the vaddr
  *  is an invalid pointer, NULL is returned.
  * 
  *  @param vaddr - User virtual address of a page
@@ -94,7 +94,7 @@ struct supp_page *get_supp_page(struct hash *table, void *vaddr) {
 /*! valid_page_data
  * 
  *  @description Returns whether the page with argued virtual address has valid
- *  data.  If the page is in the kernel, the data is invalid.
+ *  data.
  * 
  *  @param vaddr - Virtual address of a page
  * 
@@ -123,7 +123,6 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
 	if (!valid_page_data(table, vaddr))
 		return NULL;
 	
-    //printf("Paging %x to new frame\n", vaddr);
 	/* Get supplemental page so we know where to look for vaddr data. */
 	struct supp_page *spg = get_supp_page(table, vaddr);
 	
@@ -137,7 +136,6 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
 	/* Populate new frame based on what vaddr supposedly pointed to. */
 	switch (spg->type) {
 		case filesys : /* Read from file for specified number of bytes. */
-            //printf("Reading in from file\n");
 			if (file_read_at(spg->fil, new_frame->phys_addr, spg->bytes, spg->offset) != (int) spg->bytes) {
 				PANIC("Error with page fault\n");
 			}
@@ -149,11 +147,9 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
                 spg->offset = 0;
                 spg->bytes = 0;
                 spg->swap = NULL;
-            //    printf("Paging in data page \n");
             }
 			break;
 		case swapslot : /* Read from swap slot. */
-            //printf("Reading in from slot\n");
 			swap_retrieve_page(new_frame->phys_addr, spg->swap);
 			break;
 		default : /* Something went terribly wrong if not one of the enums. */
@@ -167,7 +163,7 @@ struct frame *page_to_new_frame(struct hash *table, void *vaddr, bool pinned) {
 	return new_frame;
 }
 
-/*! remove_page
+/*! free_supp_page
  * 
  *  @description Removes a page from the supplemental page table and frees
  *  the page.
