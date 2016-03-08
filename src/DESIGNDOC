@@ -41,6 +41,7 @@ which parts.
    Make sure that each member's total time is listed.
 Jerry - 30
 Jack - 40
+Tim - 20
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
@@ -48,6 +49,7 @@ Jerry - Debugging. also pinning, loader, stack growth, eviction
 Jack - mmap file, debugging, reorganized syscalls, pinning, rewrote read/write 
        system calls to check permission and pin each page involved and
        read/write to them separately
+Tim - swap, supplemental page and frame tables
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
