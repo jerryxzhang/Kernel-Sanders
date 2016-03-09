@@ -46,6 +46,7 @@
 #include "devices/ide.h"
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
+#include "filesys/cache.h"
 
 #endif
 
@@ -123,7 +124,7 @@ int main(void) {
     exception_init();
     syscall_init();
     process_init();
-#endif    
+#endif
 
     /* Start thread scheduler and enable interrupts. */
     thread_start();
@@ -135,10 +136,11 @@ int main(void) {
     ide_init();
     locate_block_devices();
     filesys_init(format_filesys);
+    cache_init();
 #endif
 
 #ifdef VM
-	/* Set up virtual memory. */
+    /* Set up virtual memory. */
     init_frame_table();
     init_swap_table();
 #endif
