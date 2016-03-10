@@ -29,24 +29,22 @@
 
 
 #define CACHE_BLOCKS 64
-#define REFRESH_CACHE_MS 60000 /* ms between writing dirty blocks to mem */
-#define UPDATE_ACCESS_MS 10 /* ms between updating access bits. */
+#define REFRESH_CACHE_MS 100 /* ms between writing dirty blocks to mem */
+#define UPDATE_ACCESS_MS 1 /* ms between updating access bits. */
 
 
 /* Cache of file blocks */
 static struct list buffer_cache;
 
 
-/* Writes all blocks in cache to memory if they're dirty. */
-void refresh_cache(void);
 /* Periodically refreshes cache. */
 void refresh_cache_cycle(void *unused);
 /* Updates last access value for every block in cache. */
 void update_accesses(void *unused);
 /* Chooses a block to evict from the cache and evicts it. */
-struct file_block *cache_evict(void);
+struct cache_block *cache_evict(void);
 /* Finds the block in the cache. */
-struct file_block *find_block(struct inode *in, block_sector_t sector);
+struct cache_block *find_block(struct inode *in, block_sector_t sector);
 /* Implemented to read next block from disk on block read. */
 void cache_read_ahead(void *args);
 
@@ -60,6 +58,7 @@ void cache_read_ahead(void *args);
 void cache_init(void) {
     /* Initialize the cache list. */
     list_init(&buffer_cache);
+    lock_init(&cache_lock);
     
     /* Devote threads to refreshing cache (write dirty blocks to memory) and
      * updating accessed bits. */
@@ -79,10 +78,10 @@ void cache_init(void) {
  * @param in - The inode in memory containing info about read
  * @param sector - The sector on the disk to read from
  */
-void cache_read_block(struct inode *in, block_sector_t sector) {
+struct cache_block *cache_read_block(struct inode *in, block_sector_t sector) {
     /* Find a space for/ a pointer to the block in the cache. */
     /* find_block sets accessed bit */
-    find_block(in, sector);
+    struct cache_block *cache_block = find_block(in, sector);
     
     /* While read happens, load next block from disk into cache. */
     /* This is done on its own thread so it happens in the background. */
@@ -95,7 +94,10 @@ void cache_read_block(struct inode *in, block_sector_t sector) {
     *(block_sector_t *) (args + sizeof(struct inode *)) = sector + 1;
     
     /* Create the thread that will load block. */
-    thread_create("read_ahead", PRI_DEFAULT, cache_read_ahead, args);
+    //thread_create("read_ahead", PRI_DEFAULT, cache_read_ahead, args);
+    //cache_read_ahead(args);
+    
+    return cache_block;
 }
 
 
@@ -125,7 +127,7 @@ void cache_read_ahead(void *args) {
     find_block(in, sector);
     
     /* This concludes this thread's purpose. */
-    thread_exit(0);
+    //thread_exit(0);
 }
 
 
@@ -140,12 +142,14 @@ void cache_read_ahead(void *args) {
  * @param in - The inode in memory containing info about write
  * @param sector - The sector on disk to write to
  */
-void cache_write_block(struct inode *in, block_sector_t sector) {
+struct cache_block *cache_write_block(struct inode *in, block_sector_t sector) {
     /* Find a space for/a pointer to the block in the cache. */
-    struct file_block *cache_block = find_block(in, sector);
+    struct cache_block *cache_block = find_block(in, sector);
     
     /* Mark block as dirty for write (access set in find block). */
     cache_block->dirty = 1;
+    
+    return cache_block;
 }
 
 
@@ -160,24 +164,24 @@ void cache_write_block(struct inode *in, block_sector_t sector) {
  * @param blk - Block in memory associated with memory access.
  * @param sector - Sector in disk associated with memory access.
  * 
- * @return file_block - A pointer to the file_block.
+ * @return cache_block - A pointer to the cache_block.
  */
-struct file_block *find_block(struct inode *in, block_sector_t sector) {
+struct cache_block *find_block(struct inode *in, block_sector_t sector) {
     /* List iterator for searching cache. */
     struct list_elem *e;
     
     /* Block in cache (NULL if not found) */
-    struct file_block *cache_block = NULL;
+    struct cache_block *cache_block = NULL;
     
     /* Don't attempt to access block outside of device. */
     if (sector >= block_size(fs_device))
         return cache_block;
     
     for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
-        cache_block = list_entry(e, struct file_block, block_elem);
+        cache_block = list_entry(e, struct cache_block, block_elem);
         
         /* If this is a match, stop iterating. */
-        if (cache_block->in == in)
+        if (cache_block->in == in && cache_block->sector == sector)
             break;
             
         /* Otherwise, go back to NULL in case this is the last elem. */
@@ -190,19 +194,18 @@ struct file_block *find_block(struct inode *in, block_sector_t sector) {
         /* First make space for the block. */
         if (list_size(&buffer_cache) < CACHE_BLOCKS)
             /* Room in cache, create new block. */
-            cache_block = (struct file_block *)malloc(sizeof(struct file_block));
+            cache_block = (struct cache_block *)malloc(sizeof(struct cache_block));
         else
             /* Need to evict.  Retain space from eviction. */
             cache_block = cache_evict();
+        
+        ASSERT (cache_block != NULL);
             
         /* Add the block to our cache (evict removes it) */
         list_push_back(&buffer_cache, &cache_block->block_elem);
         
-        /* Clear data. */
-        memset(&cache_block->data, 0, BLOCK_SECTOR_SIZE);
-        
         /* Import block. */
-        block_read(fs_device, sector, (void *) cache_block->data);
+        block_read(fs_device, sector, (uint8_t *) cache_block->data);
         cache_block->in = in;
         cache_block->sector = sector;
         
@@ -210,8 +213,6 @@ struct file_block *find_block(struct inode *in, block_sector_t sector) {
         cache_block->dirty = 0;
         cache_block->recent_accesses = 0;
     }
-    
-    ASSERT(cache_block != NULL);
     
     /* Only entering this function if an access is being made. */
     cache_block->accessed = 1;
@@ -230,21 +231,21 @@ struct file_block *find_block(struct inode *in, block_sector_t sector) {
  * @descr Finds the block in the cache whose last access is in the most distant
  *        past, then evicts it from the cache.
  */
-struct file_block *cache_evict(void) {
+struct cache_block *cache_evict(void) {
     /* Iterator for cache. */
     struct list_elem *e;
     
     /* Block to evict. */
-    struct file_block *victim = NULL, *temp;
+    struct cache_block *victim = NULL, *temp;
     uint64_t oldest = -1; // -1 typecasts to largest 64-bit int
     
     for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
         /* Get next eviction candidate. */
-        temp = list_entry(e, struct file_block, block_elem);
+        temp = list_entry(e, struct cache_block, block_elem);
         
         /* Update accordingly to keep track of oldest block. */
-        if (victim->recent_accesses < oldest) {
-            oldest = victim->recent_accesses;
+        if (temp->recent_accesses < oldest) {
+            oldest = temp->recent_accesses;
             victim = temp;
         }
         
@@ -257,13 +258,13 @@ struct file_block *cache_evict(void) {
     
     /* victim should never be NULL, but make sure just in case. */
     ASSERT(victim != NULL);
-    
-    /* If this is dirty, write it to memory before removing. */
-    if (victim->dirty)
-        block_write(fs_device, victim->sector, (void *) victim->data);
         
     /* Evict the page from the cache. */
     list_remove(&victim->block_elem);
+    
+    /* If this is dirty, write it to memory before removing. */
+    if (victim->dirty)
+        block_write(fs_device, victim->sector, (uint8_t *) victim->data);
     
     /* Return the block for the caller to handle. */
     return victim;
@@ -282,15 +283,16 @@ void refresh_cache(void) {
     struct list_elem *e;
     
     /* Temp for writing blocks to memory. */
-    struct file_block *blk;
+    struct cache_block *blk;
     
     for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
         /* Get the next cache file block. */
-        blk = list_entry(e, struct file_block, block_elem);
+        blk = list_entry(e, struct cache_block, block_elem);
         
         /* Only care about writing to memory if dirty. */
         if (blk->dirty) {
             block_write(fs_device, blk->sector, (void *) blk->data);
+            blk->dirty = 0;
         }
     }
 }
@@ -305,7 +307,11 @@ void refresh_cache(void) {
  */
 void refresh_cache_cycle(void *unused) {
     while (1) {
+        /* Write everything that's dirty back to memory. */
+        lock_acquire(&cache_lock);
         refresh_cache();
+        lock_release(&cache_lock);
+        
         /* Sleep until next time we want to refresh. */
         timer_msleep(REFRESH_CACHE_MS);
     }
@@ -326,12 +332,12 @@ void refresh_cache_cycle(void *unused) {
 void update_accesses(void *unused) {
     /* Iterator for our buffer cache list. */
     struct list_elem *e;
-    struct file_block *blk;
+    struct cache_block *blk;
     
     while (1) {
         for (e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
             /* Use iterator to get next block in cache. */
-            blk = list_entry(e, struct file_block, block_elem);
+            blk = list_entry(e, struct cache_block, block_elem);
             
             /* Make space for access bit on left. */
             blk->recent_accesses >>= 1;

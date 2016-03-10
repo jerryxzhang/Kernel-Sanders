@@ -3,10 +3,14 @@
 
 
 #include <list.h>
+#include "threads/synch.h"
 #include "devices/block.h"
 
 
-struct file_block {
+struct lock cache_lock;
+
+
+struct cache_block {
     struct list_elem block_elem; // For iterating over buffer cache
     
     char data[BLOCK_SECTOR_SIZE]; // Data being cached
@@ -20,8 +24,9 @@ struct file_block {
 
 
 void cache_init(void); /* Initializes buffer cache. */
-void cache_read_block(struct inode *in, block_sector_t sector); /* Reads block from cache. */
-void cache_write_block(struct inode *in, block_sector_t sector); /* Writes to block in cache. */
+void refresh_cache(void); /* Writes all dirty blocks in cache to memory. */
+struct cache_block *cache_read_block(struct inode *in, block_sector_t sector); /* Reads block from cache. */
+struct cache_block *cache_write_block(struct inode *in, block_sector_t sector); /* Writes to block in cache. */
 
 
 
