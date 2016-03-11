@@ -35,6 +35,11 @@
 
 /* Cache of file blocks */
 static struct list buffer_cache;
+/* Used by read ahead thread to know if reading ahead required. */
+bool read_ahead;
+/* Block to read ahead. */
+struct inode *ind;
+block_sector_t next_block;
 
 
 /* Periodically refreshes cache. */
@@ -60,10 +65,15 @@ void cache_init(void) {
     list_init(&buffer_cache);
     lock_init(&cache_lock);
     
+    read_ahead = 0;
+    
     /* Devote threads to refreshing cache (write dirty blocks to memory) and
      * updating accessed bits. */
     thread_create("cache_refresh", PRI_DEFAULT, refresh_cache_cycle, NULL);
     thread_create("cache_accesses", PRI_DEFAULT, update_accesses, NULL);
+    
+    /* Takes care of reading ahead if there is reading ahead to be done. */
+    thread_create("cache_read_ahead", PRI_DEFAULT, cache_read_ahead, NULL);
 }
 
 
@@ -93,9 +103,10 @@ struct cache_block *cache_read_block(struct inode *in, block_sector_t sector) {
     *(struct inode **) args = in;
     *(block_sector_t *) (args + sizeof(struct inode *)) = sector + 1;
     
-    /* Create the thread that will load block. */
-    //thread_create("read_ahead", PRI_DEFAULT, cache_read_ahead, args);
-    //cache_read_ahead(args);
+    /* Set the global environment so we can load the next block too. */
+    ind = in;
+    next_block = sector + 1;
+    read_ahead = 1;
     
     return cache_block;
 }
@@ -108,26 +119,19 @@ struct cache_block *cache_read_block(struct inode *in, block_sector_t sector) {
  * 
  * @descr Used to read the next block into the cache.  This should be run on
  *        a thread of its own while the first block is still being read.
- * 
- * @param in - The inode in memory containing info about read.  This is the
- *        first sizeof(struct inode *) bytes in args array.
- * @param sector - The sector on disk to read from.  This is the latter
- *        sizeof(block_sector_t) bytes in args array.
  */
-void cache_read_ahead(void *args) {
-    /* args unpacked into these. */
-    struct inode *in;
-    block_sector_t sector;
-    
-    /* Unpack args into our variables. */
-    memcpy(&in, args, sizeof(struct inode *));
-    memcpy(&sector, args + sizeof(struct inode *), sizeof(block_sector_t));
-    
-    /* Load next block into cache. */
-    find_block(in, sector);
-    
-    /* This concludes this thread's purpose. */
-    //thread_exit(0);
+void cache_read_ahead(void *unused) {
+    while(1) {
+        if (read_ahead) {
+            /* Mark that we have read ahead. */
+            read_ahead = 0;
+            
+            /* Get the next block. */
+            lock_acquire(&cache_lock);
+            find_block(ind, next_block);
+            lock_release(&cache_lock);
+        }
+    }
 }
 
 
