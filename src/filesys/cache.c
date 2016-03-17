@@ -38,22 +38,19 @@ static struct list buffer_cache;
 /* Used by read ahead thread to know if reading ahead required. */
 bool read_ahead;
 /* Block to read ahead. */
-struct inode *ind;
 block_sector_t next_block;
 
 
 /* Periodically refreshes cache. */
-void refresh_cache_cycle(void *unused);
+void refresh_cache_cycle(void *aux UNUSED);
 /* Updates last access value for every block in cache. */
-void update_accesses(void *unused);
+void update_accesses(void *aux UNUSED);
 /* Chooses a block to evict from the cache and evicts it. */
 struct cache_block *cache_evict(void);
 /* Finds the block in the cache. */
-struct cache_block *find_block(struct inode *in, block_sector_t sector);
+struct cache_block *find_block(block_sector_t sector);
 /* Implemented to read next block from disk on block read. */
 void cache_read_ahead(void *args);
-
-
 
 /*!
  * init_cache
@@ -76,43 +73,26 @@ void cache_init(void) {
     thread_create("cache_read_ahead", PRI_DEFAULT, cache_read_ahead, NULL);
 }
 
-
-
-
 /*!
  * cache_read_block
  * 
  * @descr Reads from a block in the cache.  If the block is not in the cache,
  *        it is loaded into the cache then read from.
  * 
- * @param in - The inode in memory containing info about read
  * @param sector - The sector on the disk to read from
  */
-struct cache_block *cache_read_block(struct inode *in, block_sector_t sector) {
+struct cache_block *cache_read_block(block_sector_t sector) {
     /* Find a space for/ a pointer to the block in the cache. */
     /* find_block sets accessed bit */
-    struct cache_block *cache_block = find_block(in, sector);
+    struct cache_block *cache_block = find_block(sector);
     
     /* While read happens, load next block from disk into cache. */
     /* This is done on its own thread so it happens in the background. */
-    /* First allocate space for the the args array that we will give to the
-     * thread function. */
-    void *args = malloc(sizeof(struct inode *) + sizeof(block_sector_t));
-    
-    /* Load the inode and next sector into the args array. */
-    *(struct inode **) args = in;
-    *(block_sector_t *) (args + sizeof(struct inode *)) = sector + 1;
-    
-    /* Set the global environment so we can load the next block too. */
-    ind = in;
     next_block = sector + 1;
     read_ahead = 1;
     
     return cache_block;
 }
-
-
-
 
 /*!
  * cache_read_ahead
@@ -120,7 +100,7 @@ struct cache_block *cache_read_block(struct inode *in, block_sector_t sector) {
  * @descr Used to read the next block into the cache.  This should be run on
  *        a thread of its own while the first block is still being read.
  */
-void cache_read_ahead(void *unused) {
+void cache_read_ahead(void *aux UNUSED) {
     while(1) {
         if (read_ahead) {
             /* Mark that we have read ahead. */
@@ -128,14 +108,11 @@ void cache_read_ahead(void *unused) {
             
             /* Get the next block. */
             lock_acquire(&cache_lock);
-            find_block(ind, next_block);
+            find_block(next_block);
             lock_release(&cache_lock);
         }
     }
 }
-
-
-
 
 /*!
  * cache_write_block
@@ -143,21 +120,17 @@ void cache_read_ahead(void *unused) {
  * @descr Writes to a block in the cache.  If the block is not in the cache,
  *        it is loaded into the cache then written to.
  * 
- * @param in - The inode in memory containing info about write
  * @param sector - The sector on disk to write to
  */
-struct cache_block *cache_write_block(struct inode *in, block_sector_t sector) {
+struct cache_block *cache_write_block(block_sector_t sector) {
     /* Find a space for/a pointer to the block in the cache. */
-    struct cache_block *cache_block = find_block(in, sector);
+    struct cache_block *cache_block = find_block(sector);
     
     /* Mark block as dirty for write (access set in find block). */
     cache_block->dirty = 1;
     
     return cache_block;
 }
-
-
-
 
 /*!
  * find_block
@@ -170,7 +143,7 @@ struct cache_block *cache_write_block(struct inode *in, block_sector_t sector) {
  * 
  * @return cache_block - A pointer to the cache_block.
  */
-struct cache_block *find_block(struct inode *in, block_sector_t sector) {
+struct cache_block *find_block(block_sector_t sector) {
     /* List iterator for searching cache. */
     struct list_elem *e;
     
@@ -178,14 +151,13 @@ struct cache_block *find_block(struct inode *in, block_sector_t sector) {
     struct cache_block *cache_block = NULL;
     
     /* Don't attempt to access block outside of device. */
-    if (sector >= block_size(fs_device))
-        return cache_block;
+    ASSERT(sector < block_size(fs_device));
     
     for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
         cache_block = list_entry(e, struct cache_block, block_elem);
         
         /* If this is a match, stop iterating. */
-        if (cache_block->in == in && cache_block->sector == sector)
+        if (cache_block->sector == sector)
             break;
             
         /* Otherwise, go back to NULL in case this is the last elem. */
@@ -210,7 +182,6 @@ struct cache_block *find_block(struct inode *in, block_sector_t sector) {
         
         /* Import block. */
         block_read(fs_device, sector, (uint8_t *) cache_block->data);
-        cache_block->in = in;
         cache_block->sector = sector;
         
         /* Caller will set these accordingly, but should start cleared. */
@@ -225,9 +196,6 @@ struct cache_block *find_block(struct inode *in, block_sector_t sector) {
     
     return cache_block;
 }
-
-
-
 
 /*!
  * cache_evict
@@ -274,9 +242,6 @@ struct cache_block *cache_evict(void) {
     return victim;
 }
 
-
-
-
 /*!
  * refresh_cache
  * 
@@ -301,15 +266,12 @@ void refresh_cache(void) {
     }
 }
 
-
-
-
 /*!
  * refresh_cache_cycle
  * 
  * @descr Periodically refreshes cache. 
  */
-void refresh_cache_cycle(void *unused) {
+void refresh_cache_cycle(void *aux UNUSED) {
     while (1) {
         /* Write everything that's dirty back to memory. */
         lock_acquire(&cache_lock);
@@ -321,9 +283,6 @@ void refresh_cache_cycle(void *unused) {
     }
 }
 
-
-
-
 /*!
  * update_accesses
  * 
@@ -333,7 +292,7 @@ void refresh_cache_cycle(void *unused) {
  *        accessed more recently than others, or more frequently if their last
  *        access is the same.
  */
-void update_accesses(void *unused) {
+void update_accesses(void *aux UNUSED) {
     /* Iterator for our buffer cache list. */
     struct list_elem *e;
     struct cache_block *blk;
@@ -360,3 +319,4 @@ void update_accesses(void *unused) {
         timer_msleep(UPDATE_ACCESS_MS);
     }
 }
+

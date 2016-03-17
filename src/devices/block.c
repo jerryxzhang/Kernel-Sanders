@@ -116,6 +116,14 @@ void block_write(struct block *block, block_sector_t sector,
     block->write_cnt++;
 }
 
+/*! Writes a block with all 0s to verify correctness of other functions. */
+void block_clear(struct block *block, block_sector_t sector) {
+    char buffer[BLOCK_SECTOR_SIZE];
+    int i;
+    for (i = 0; i < BLOCK_SECTOR_SIZE; i++) buffer[i] = 0;
+    block_write(block, sector, (void*) buffer);
+}
+
 /*! Returns the number of sectors in BLOCK. */
 block_sector_t block_size(struct block *block) {
     return block->size;
