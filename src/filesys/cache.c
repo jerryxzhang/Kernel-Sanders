@@ -80,18 +80,49 @@ void cache_init(void) {
  *        it is loaded into the cache then read from.
  * 
  * @param sector - The sector on the disk to read from
+ * @param buffer - Cache read from and loaded into caller's buffer
  */
+<<<<<<< Updated upstream
 struct cache_block *cache_read_block(block_sector_t sector) {
     /* Find a space for/ a pointer to the block in the cache. */
+=======
+void cache_read_block(struct inode *in, block_sector_t sector, char *buffer) {
+    ASSERT(buffer != NULL);
+    /* Find a space for/a pointer to the block in the cache. */
+>>>>>>> Stashed changes
     /* find_block sets accessed bit */
     struct cache_block *cache_block = find_block(sector);
     
+<<<<<<< Updated upstream
     /* While read happens, load next block from disk into cache. */
     /* This is done on its own thread so it happens in the background. */
+=======
+    /* Set the global environment so we can load the next block too. */
+    ind = in;
+>>>>>>> Stashed changes
     next_block = sector + 1;
     read_ahead = 1;
     
-    return cache_block;
+    /* Reading from block.  Want to increment b to mark that there is an access
+     * and if the lock is not held by anyone, acquire it to ensure nothing
+     * writes to this block while reading. */
+    lock_acquire(&cache_block->lock.r); // Ensure this is atomic
+    cache_block->lock.b += 1;
+    if (cache_block->lock.b == 1) // Only accessor, lock is free
+        sema_down(&cache_block->lock.g);
+    lock_release(&cache_block->lock.r);
+    
+    /* Copy data from cache to caller's buffer. */
+    memcpy(buffer, cache_block->data, BLOCK_SECTOR_SIZE);
+    
+    /* Release lock and account for stopping reading from cache. */
+    lock_acquire(&cache_block->lock.r);
+    cache_block->lock.b -= 1;
+    if (cache_block->lock.b == 0) // Was last accesor, free lock
+        sema_up(&cache_block->lock.g);
+    lock_release(&cache_block->lock.r);
+    
+    return;
 }
 
 /*!
@@ -122,14 +153,28 @@ void cache_read_ahead(void *aux UNUSED) {
  * 
  * @param sector - The sector on disk to write to
  */
+<<<<<<< Updated upstream
 struct cache_block *cache_write_block(block_sector_t sector) {
+=======
+void cache_write_block(struct inode *in, block_sector_t sector, char *data) {
+    ASSERT(data != NULL);
+>>>>>>> Stashed changes
     /* Find a space for/a pointer to the block in the cache. */
     struct cache_block *cache_block = find_block(sector);
+    
+    /* Must have a lock before writing to cache. */
+    sema_down(&cache_block->lock.g);
+    
+    /* Write data to cache from caller's buffer. */
+    memcpy(cache_block->data, data, BLOCK_SECTOR_SIZE);
     
     /* Mark block as dirty for write (access set in find block). */
     cache_block->dirty = 1;
     
-    return cache_block;
+    /* Done writing, free lock. */
+    sema_up(&cache_block->lock.g);
+    
+    return;
 }
 
 /*!
@@ -168,12 +213,19 @@ struct cache_block *find_block(block_sector_t sector) {
         /* Block was not in the cache, retrieve it from memory. */
         
         /* First make space for the block. */
-        if (list_size(&buffer_cache) < CACHE_BLOCKS)
+        if (list_size(&buffer_cache) < CACHE_BLOCKS) {
             /* Room in cache, create new block. */
             cache_block = (struct cache_block *)malloc(sizeof(struct cache_block));
-        else
-            /* Need to evict.  Retain space from eviction. */
-            cache_block = cache_evict();
+            
+            /* Initialize block. */
+            sema_init(&cache_block->lock.g, 1);
+        }
+        else {
+            while (cache_block == NULL) {
+                /* Need to evict.  Retain space from eviction. */
+                cache_block = cache_evict();
+            }
+        }
         
         ASSERT (cache_block != NULL);
             
@@ -228,15 +280,15 @@ struct cache_block *cache_evict(void) {
             break;
     }
     
-    /* victim should never be NULL, but make sure just in case. */
-    ASSERT(victim != NULL);
+    /* If no victim could have been chosen, don't try to remove anything. */
+    if (victim != NULL) {
+        /* Evict the page from the cache. */
+        list_remove(&victim->block_elem);
         
-    /* Evict the page from the cache. */
-    list_remove(&victim->block_elem);
-    
-    /* If this is dirty, write it to memory before removing. */
-    if (victim->dirty)
-        block_write(fs_device, victim->sector, (uint8_t *) victim->data);
+        /* If this is dirty, write it to memory before removing. */
+        if (victim->dirty)
+            block_write(fs_device, victim->sector, (uint8_t *) victim->data);
+    }
     
     /* Return the block for the caller to handle. */
     return victim;

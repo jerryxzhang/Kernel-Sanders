@@ -308,8 +308,8 @@ off_t inode_length(const struct inode *inode) {
    than SIZE if an error occurs or end of file is reached. */
 off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset) {
     uint8_t *buffer = buffer_;
+    char cache_copy[BLOCK_SECTOR_SIZE];
     off_t bytes_read = 0;
-    struct cache_block *cache_block = NULL;
 
     while (size > 0) {
         /* Disk sector to read, starting byte offset within sector. */
@@ -329,11 +329,18 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
         /* Number of bytes to actually copy out of this sector. */
         int chunk_size = size < min_left ? size : min_left;
         if (chunk_size <= 0)
+<<<<<<< Updated upstream
             break;    
+=======
+            break;
+            
+        lock_acquire(&cache_lock);
+        /* Load data into cache. */
+        cache_read_block(inode, sector_idx, cache_copy);
+>>>>>>> Stashed changes
         
         /* Copy from cache into caller's buffer. */
-        memcpy(buffer + bytes_read, cache_block->data + sector_ofs, chunk_size);
-        
+        memcpy(buffer + bytes_read, cache_copy + sector_ofs, chunk_size);
         lock_release(&cache_lock);
       
         /* Advance. */
@@ -352,8 +359,8 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     growth is not yet implemented.) */
 off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size, off_t offset) {
     const uint8_t *buffer = buffer_;
+    char new_data[BLOCK_SECTOR_SIZE]; // Data to write into memory
     off_t bytes_written = 0;
-    struct cache_block *cache_block = NULL;
 
     if (inode->deny_write_cnt)
         return 0;
@@ -379,7 +386,15 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size, off_t
         if (chunk_size <= 0)
             break;
 
+<<<<<<< Updated upstream
         memcpy(cache_block->data + sector_ofs, buffer + bytes_written, chunk_size);
+=======
+        /* Get the data from the cache and write to it. */
+        lock_acquire(&cache_lock);
+        cache_read_block(inode, sector_idx, new_data);
+        memcpy(new_data + sector_ofs, buffer + bytes_written, chunk_size);
+        cache_write_block(inode, sector_idx, new_data);
+>>>>>>> Stashed changes
         lock_release(&cache_lock);
 
         /* Advance. */
