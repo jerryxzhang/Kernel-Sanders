@@ -77,13 +77,14 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     block_sector_t * double_data;
 
     // Get the main node data from cache
-    data = (struct inode_disk *)cache_read_block(inode->sector)->data;
+    struct cache_block* cache_block = cache_read_block(inode->sector);
+    data = (struct inode_disk*) cache_block->data;
     ASSERT(is_valid_inode(data));
 
     // Check it its in the direct nodes
     if (blocks < NUM_DIRECT) {
         ret = data->direct[blocks];
-        cache_read_end(inode->sector);
+        cache_read_end(cache_block);
         return ret;
     } 
     // Otherwise, skip over them
@@ -93,10 +94,11 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     blocks = blocks % ENTRIES_PER_SECTOR;
     // Check if it fits in the single indirect nodes.
     if (single < NUM_SINGLE_INDIRECT) {
-        single_data = (block_sector_t *) cache_read_block(data->single_indirect[single])->data;
+        struct cache_block* indirect_block = cache_read_block(data->single_indirect[single]);
+        single_data = (block_sector_t*) indirect_block->data;
         ret = single_data[blocks];
-        cache_read_end(data->single_indirect[single]);
-        cache_read_end(inode->sector);
+        cache_read_end(indirect_block);
+        cache_read_end(cache_block);
         return ret;
     }
     // Skip over single indirects
@@ -105,12 +107,14 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     // Only one double indirect, so the rest must fit
     ASSERT(single < ENTRIES_PER_SECTOR);
 
-    double_data = (block_sector_t *) cache_read_block(data->double_indirect)->data;
-    single_data = (block_sector_t *) cache_read_block(double_data[single])->data;
+    struct cache_block* indirect_block = cache_read_block(data->double_indirect);
+    double_data = (block_sector_t *) indirect_block->data;
+    struct cache_block* indirect_block2 = cache_read_block(double_data[single]);
+    single_data = (block_sector_t *) indirect_block2->data;
     ret = single_data[blocks];
-    cache_read_end(double_data[single]);
-    cache_read_end(data->double_indirect[single]);
-    cache_read_end(inode->sector);
+    cache_read_end(indirect_block2);
+    cache_read_end(indirect_block);
+    cache_read_end(cache_block);
     return ret;
 }
 
@@ -150,7 +154,7 @@ bool allocate_indirect(block_sector_t *sector, off_t *length) {
         if (!allocate_direct(sectors + i, length)) return false;
         if (*length <= 0) break;
     }   
-    cache_write_end(*sector); 
+    cache_write_end(cache_block); 
     return true;
 }
 
@@ -169,7 +173,7 @@ bool allocate_double_indirect(block_sector_t *sector, off_t *length) {
         if (!allocate_indirect(sectors + i, length)) return false;
         if (*length <= 0) break;
     }   
-    cache_write_end(*sector);
+    cache_write_end(cache_block);
     return true;
 }
 
@@ -194,7 +198,7 @@ bool grow_indirect(block_sector_t *sector, block_sector_t index) {
     ASSERT(index < ENTRIES_PER_SECTOR);
     block_sector_t *sectors = (block_sector_t*) cache_block->data;
     if (!grow_direct(sectors+index)) return false;
-    cache_write_end(*sector);
+    cache_write_end(cache_block);
     return true;
 }
 
@@ -209,7 +213,7 @@ bool grow_double_indirect(block_sector_t *sector, block_sector_t index1, block_s
     ASSERT(index1 < ENTRIES_PER_SECTOR);
     block_sector_t *sectors = (block_sector_t*) cache_block->data;
     if (!grow_indirect(sectors+index1, index2)) return false;
-    cache_write_end(*sector);
+    cache_write_end(cache_block);
     return true;
 }
 
@@ -232,7 +236,7 @@ void free_indirect(block_sector_t sector, off_t *length) {
         free_direct(sectors[i], length);
         if (*length <= 0) break;
     }
-    cache_read_end(sector);
+    cache_read_end(cache_block);
     free_map_release(sector);
 }
 
@@ -248,7 +252,7 @@ void free_double_indirect(block_sector_t sector, off_t *length) {
         free_indirect(sectors[i], length);
         if (*length <= 0) break;
     }
-    cache_read_end(sector);
+    cache_read_end(cache_block);
     free_map_release(sector);
 }
 
@@ -291,7 +295,7 @@ bool inode_create(block_sector_t sector, off_t length) {
     // Allocate a double indirect node if necessary
     if (length > 0 && !allocate_double_indirect(&disk_inode->double_indirect, &length)) return false;
 
-    cache_write_end(sector);
+    cache_write_end(cache_block);
     return true;
 }
 
@@ -370,7 +374,7 @@ void inode_close(struct inode *inode) {
         
             // Allocate a double indirect node if necessary
             if (length > 0) free_double_indirect(disk_inode->double_indirect, &length);
-            cache_read_end(inode->sector); 
+            cache_read_end(cache_block); 
             free_map_release(inode->sector);
         }
         free(inode); 
@@ -386,16 +390,18 @@ void inode_remove(struct inode *inode) {
 
 /** Get the length of data the inode contains. */
 off_t inode_length(const struct inode *inode) {
-    off_t len = ((struct inode_disk*) cache_read_block(inode->sector)->data)->length;
-    cache_read_end(inode->sector);
+    struct cache_block *cache_block = cache_read_block(inode->sector);
+    off_t len = ((struct inode_disk*) cache_block->data)->length;
+    cache_read_end(cache_block);
     return len;
 }
 
 /** Set the length of data the inode contains. */
 void inode_set_length(const struct inode *inode, off_t length) {
-    struct inode_disk* inode_disk = (struct inode_disk*) cache_write_block(inode->sector)->data;
+    struct cache_block *cache_block = cache_write_block(inode->sector);
+    struct inode_disk* inode_disk = (struct inode_disk*) cache_block->data;
     inode_disk->length = length;
-    cache_write_end(inode->sector);
+    cache_write_end(cache_block);
 }
 
 /*! Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
@@ -443,7 +449,8 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
 bool inode_extend(struct inode* inode, block_sector_t num) {
     
     // Get the main node data from cache
-    struct inode_disk *data = (struct inode_disk *)cache_write_block(inode->sector)->data;
+    struct cache_block *cache_block = cache_write_block(inode->sector);
+    struct inode_disk *data = (struct inode_disk *)cache_block->data;
     ASSERT(is_valid_inode(data));
 
     block_sector_t num_blocks = CEIL(data->length, BLOCK_SECTOR_SIZE) - 1;
@@ -478,7 +485,7 @@ bool inode_extend(struct inode* inode, block_sector_t num) {
         single-= NUM_SINGLE_INDIRECT;
         success &= grow_double_indirect(&data->double_indirect, single, blocks);
     }
-    cache_write_end(inode->sector);
+    cache_write_end(cache_block);
     return success;
 }
 
