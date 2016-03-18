@@ -5,8 +5,9 @@
 #include "filesys/off_t.h"
 
 /*! Sectors of system file inodes. @{ */
-#define FREE_MAP_SECTOR 0       /*!< Free map file inode sectors. */
-#define ROOT_DIR_SECTOR 4       /*!< Root directory file inode sector. */
+#define DEBUG_SECTOR 0       /*!< Reserved for debugging. */
+#define FREE_MAP_SECTOR 1       /*!< Free map file inode sectors. */
+#define ROOT_DIR_SECTOR 2       /*!< Root directory file inode sector. */
 /*! @} */
 
 /*! Block device that contains the file system. */
