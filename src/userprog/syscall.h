@@ -39,5 +39,13 @@ bool is_stack_access(const void* addr, void* esp);
 void free_open_files(void);
 void free_mmappings(void);
 
+bool chdir(const char *dir);
+bool mkdir(const char *dir);
+bool readdir(int fd, char name[READDIR_MAX_LEN + 1]);
+bool isdir(int fd);
+int inumber(int fd);
+
+bool create_dir_entry(const char *path, unsigned initial_size, bool is_dir);
+
 #endif /* userprog/syscall.h */
 

@@ -131,3 +131,7 @@ off_t file_tell(struct file *file) {
     return file->pos;
 }
 
+/*! Returns the is_dir member of the file struct. */
+bool file_is_dir(struct file *file) {
+    return file->is_dir;
+}

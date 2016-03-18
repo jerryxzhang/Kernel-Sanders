@@ -29,10 +29,10 @@ bool dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t parent) 
     struct dir *new_dir = dir_open(inode_open(sector));
 
     if(parent){
-        dir_add(new_dir, PATH_PARENT, parent);
+        dir_add(new_dir, PATH_PARENT, parent, true);
     }
     
-    dir_add(new_dir, PATH_WD, sector);
+    dir_add(new_dir, PATH_WD, sector, true);
 
     return true;
 
@@ -130,7 +130,8 @@ bool dir_lookup(const struct dir *dir, const char *name, struct inode **inode,
     Returns true if successful, false on failure.
     Fails if NAME is invalid (i.e. too long) or a disk or memory
     error occurs. */
-bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector) {
+bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector,
+    bool is_dir) {
     struct dir_entry e;
     off_t ofs;
     bool success = false;
@@ -175,6 +176,7 @@ bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector) {
     e.in_use = true;
     strlcpy(e.name, name, sizeof e.name);
     e.inode_sector = inode_sector;
+    e.is_dir = is_dir;
     success = inode_write_at(dir->inode, &e, sizeof(e), ofs) == sizeof(e);
 
 done:
@@ -188,6 +190,8 @@ bool dir_remove(struct dir *dir, const char *name) {
     struct inode *inode = NULL;
     bool success = false;
     off_t ofs;
+    struct dir * to_delete;
+    char deletion_content[NAME_MAX + 1];
 
     ASSERT(dir != NULL);
     ASSERT(name != NULL);
@@ -200,6 +204,20 @@ bool dir_remove(struct dir *dir, const char *name) {
     inode = inode_open(e.inode_sector);
     if (inode == NULL)
         goto done;
+
+    // check that directory is empty and that non one is using it
+    if(e.is_dir){
+        if(inode_is_shared(inode))
+            goto done;
+        to_delete = dir_open(inode);
+        if(!to_delete)
+            goto done;
+        while(dir_readdir(to_delete, deletion_content)){
+            if(strcmp(deletion_content, PATH_WD) ||
+                strcmp(deletion_content, PATH_PARENT))
+                goto done;
+        }
+    }
 
     /* Erase directory entry. */
     e.in_use = false;

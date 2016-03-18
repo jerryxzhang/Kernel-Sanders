@@ -5,7 +5,6 @@
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
-#include "filesys/directory.h"
 #include "filesys/cache.h"
 #include "userprog/process.h"
 
@@ -105,15 +104,17 @@ static bool resolve_path(const char* path, struct dir **dir, char *name){
 /*! Creates a file named NAME with the given INITIAL_SIZE.  Returns true if
     successful, false otherwise.  Fails if a file named NAME already exists,
     or if internal memory allocation fails. */
-bool filesys_create(const char *path, off_t initial_size) {
+bool filesys_create(const char *path, off_t initial_size, bool is_dir) {
     block_sector_t inode_sector = 0;
     char name[NAME_MAX + 1];
     struct dir *dir = NULL;
     if(!resolve_path(path, &dir, name))
         return false;
     bool success = (free_map_allocate(&inode_sector) &&
-                    inode_create(inode_sector, initial_size) &&
-                    dir_add(dir, name, inode_sector));
+                    (is_dir ? dir_create(inode_sector, initial_size,
+                        filesys_get_inumber(dir)): 
+                        inode_create(inode_sector, initial_size)) &&
+                    dir_add(dir, name, inode_sector, is_dir));
     if (!success && inode_sector != 0) 
         free_map_release(inode_sector);
     dir_close(dir);
@@ -165,3 +166,7 @@ static void do_format(void) {
     printf("done.\n");
 }
 
+/*! Returns the sector number of a given directory or file */
+int filesys_get_inumber(struct dir* dir){
+    return inode_get_inumber(dir_get_inode(dir));
+}

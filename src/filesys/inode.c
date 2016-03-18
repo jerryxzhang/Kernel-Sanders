@@ -569,3 +569,7 @@ void inode_allow_write (struct inode *inode) {
     inode->deny_write_cnt--;
 }
 
+/* Checks is inode is also opened in another place */
+bool inode_is_shared(struct inode* inode){
+    return inode->open_cnt > 1;
+}

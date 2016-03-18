@@ -21,5 +21,6 @@ void inode_allow_write(struct inode *);
 off_t inode_length(const struct inode *);
 void inode_set_length(const struct inode *, off_t);
 bool inode_extend(struct inode*, block_sector_t);
+bool inode_is_shared(struct inode*);
 
 #endif /* filesys/inode.h */
