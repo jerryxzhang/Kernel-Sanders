@@ -29,10 +29,10 @@ bool dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t *parent)
     struct dir *new_dir = dir_open(inode_open(sector));
 
     if(parent){
-        dir_add(new_dir, "..\0", *parent);
+        dir_add(new_dir, "..", *parent);
     }
     
-    dir_add(new_dir, ".\0", sector);
+    dir_add(new_dir, ".", sector);
 
     return true;
 
