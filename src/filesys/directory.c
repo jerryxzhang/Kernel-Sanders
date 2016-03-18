@@ -22,17 +22,17 @@ struct dir_entry {
 
 /*! Creates a directory with space for ENTRY_CNT entries in the
     given SECTOR.  Returns true if successful, false on failure. */
-bool dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t *parent) {
+bool dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t parent) {
     if (!inode_create(sector, entry_cnt * sizeof(struct dir_entry)))
         return false;
 
     struct dir *new_dir = dir_open(inode_open(sector));
 
     if(parent){
-        dir_add(new_dir, "..", *parent);
+        dir_add(new_dir, PATH_PARENT, parent);
     }
     
-    dir_add(new_dir, ".", sector);
+    dir_add(new_dir, PATH_WD, sector);
 
     return true;
 

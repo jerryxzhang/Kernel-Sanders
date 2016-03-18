@@ -15,6 +15,16 @@
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 
+//comment this out to turn off DPRINTF
+//#define DEBUG_PRINT 
+
+#ifdef DEBUG_PRINT
+#define DPRINTF(format, ...) printf(format, ##__VA_ARGS__);
+#else
+#define DPRINTF(format, ...)
+#endif
+
+
 /* Standard functions. */
 int printf(const char *, ...) PRINTF_FORMAT(1, 2);
 int snprintf(char *, size_t, const char *, ...) PRINTF_FORMAT(3, 4);

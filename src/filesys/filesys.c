@@ -44,22 +44,28 @@ void filesys_done(void) {
 }
 
 static bool resolve_path(const char* path, struct dir **dir, char *name){
+    DPRINTF("resolving path %s\n", path)
     off_t length;
     bool is_dir;
     struct inode *inode;
     if(*path == '\0'){
+        DPRINTF("EMPTY PATH\n")
         return false;
     }
     else if (*path == '/'){
+        DPRINTF("Base dir is ROOT\n")
         *dir = dir_open_root();
         path++;
     }
-    else
+    else{
+        DPRINTF("BASE DIR is WORKING DIR\n")
         *dir = dir_reopen(process_current()->working_dir);
+    }
     while(true){
         length = 0;
         while (path[length] != '/' && path[length] != '\0'){
             if(++length > NAME_MAX){
+                DPRINTF("FAILED PARSE\n");
                 dir_close(*dir);
                 return false;
             }
@@ -67,17 +73,27 @@ static bool resolve_path(const char* path, struct dir **dir, char *name){
         }
         memcpy(name, path, length);
         name[length] = '\0';
+        DPRINTF("NEXT TARGET IS %s\n", name)
         if(path[length] == '/') {
+            DPRINTF("TARGET IS DIR\n")
             if(!dir_lookup(*dir, name, &inode, &is_dir) || !is_dir){
+                DPRINTF("FAILED TO FIND IT\n");
                 dir_close(*dir);
                 return false;
             }
             dir_close(*dir);
             *dir = dir_open(inode);
+            if(dir){
+                DPRINTF("OPENED\n")
+            }
+            else{
+                DPRINTF("FAILED\n")
+            }
         }
         else if(path[length] == '\0'){
             if(!length)
                 memcpy(name, ".", 2);
+            DPRINTF("FINAL TARGET IS %s\n", name)
             return true;
         }
         path += length + 1;
@@ -116,6 +132,8 @@ struct file * filesys_open(const char *path) {
     if(!resolve_path(path, &dir, name))
         return NULL;
 
+
+
     if (dir != NULL)
         dir_lookup(dir, name, &inode, &is_dir);
     dir_close(dir);
@@ -141,7 +159,7 @@ bool filesys_remove(const char *path) {
 static void do_format(void) {
     printf("Formatting file system...");
     free_map_create();
-    if (!dir_create(ROOT_DIR_SECTOR, 16, NULL))
+    if (!dir_create(ROOT_DIR_SECTOR, 16, ROOT_DIR_SECTOR))
         PANIC("root directory creation failed");
     free_map_close();
     printf("done.\n");
