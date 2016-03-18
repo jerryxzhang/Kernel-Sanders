@@ -319,4 +319,3 @@ void update_accesses(void *aux UNUSED) {
         timer_msleep(UPDATE_ACCESS_MS);
     }
 }
-
