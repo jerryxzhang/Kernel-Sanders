@@ -101,11 +101,11 @@ struct cache_block *cache_read_block(block_sector_t sector) {
     /* Reading from block.  Want to increment b to mark that there is an access
      * and if the lock is not held by anyone, acquire it to ensure nothing
      * writes to this block while reading. */
-    //lock_acquire(&cache_block->lock.r); // Ensure this is atomic
-    //cache_block->lock.b += 1;
-    //if (cache_block->lock.b == 1) // Only accessor, lock is free
-    //    sema_down(&cache_block->lock.g);
-    //lock_release(&cache_block->lock.r);
+    lock_acquire(&cache_block->lock.r); // Ensure this is atomic
+    cache_block->lock.b += 1;
+    if (cache_block->lock.b == 1) // Only accessor, lock is free
+        sema_down(&cache_block->lock.g);
+    lock_release(&cache_block->lock.r);
     
     return cache_block;
 }
@@ -145,7 +145,7 @@ struct cache_block *cache_write_block(block_sector_t sector) {
     struct cache_block *cache_block = find_block(sector);
     
     /* Must have a lock before writing to cache. */
-    //sema_down(&cache_block->lock.g);
+    sema_down(&cache_block->lock.g);
     
     /* Mark block as dirty for write (access set in find block). */
     cache_block->dirty = 1;
@@ -353,12 +353,12 @@ void update_accesses(void *aux UNUSED) {
 
 void cache_read_end(struct cache_block *cache_block) {
     
-    /* Release lock and account for stopping reading from cache. 
+    /* Release lock and account for stopping reading from cache. */
     lock_acquire(&cache_block->lock.r);
     cache_block->lock.b -= 1;
     if (cache_block->lock.b == 0) // Was last accesor, free lock
         sema_up(&cache_block->lock.g);
-    lock_release(&cache_block->lock.r);*/
+    lock_release(&cache_block->lock.r);
     
 }
 
@@ -367,6 +367,6 @@ void cache_read_end(struct cache_block *cache_block) {
 
 void cache_write_end(struct cache_block *cache_block) {
     /* Done writing, free lock. */
-    //sema_up(&cache_block->lock.g);
+    sema_up(&cache_block->lock.g);
 }
 
