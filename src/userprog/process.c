@@ -145,6 +145,8 @@ pid_t process_execute(const char *file_name) {
         process_table_free(&process_table[pid]);
         return PID_ERROR;
     }
+
+    process_table[pid].working_dir = dir_reopen(process_current()->working_dir);
     
     enum intr_level old_level = intr_disable();
     // Wait till the child finishes loading

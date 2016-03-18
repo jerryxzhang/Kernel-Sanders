@@ -65,12 +65,13 @@ bool filesys_create(const char *name, off_t initial_size) {
 struct file * filesys_open(const char *name) {
     struct dir *dir = dir_open_root();
     struct inode *inode = NULL;
+    bool is_dir;
 
     if (dir != NULL)
-        dir_lookup(dir, name, &inode);
+        dir_lookup(dir, name, &inode, &is_dir);
     dir_close(dir);
 
-    return file_open(inode);
+    return file_open(inode, is_dir);
 }
 
 /*! Deletes the file named NAME.  Returns true if successful, false on failure.
@@ -88,7 +89,7 @@ bool filesys_remove(const char *name) {
 static void do_format(void) {
     printf("Formatting file system...");
     free_map_create();
-    if (!dir_create(ROOT_DIR_SECTOR, 16))
+    if (!dir_create(ROOT_DIR_SECTOR, 16, NULL))
         PANIC("root directory creation failed");
     free_map_close();
     printf("done.\n");

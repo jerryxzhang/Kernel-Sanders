@@ -137,6 +137,7 @@ int main(void) {
     locate_block_devices();
     cache_init();
     filesys_init(format_filesys);
+    process_current()->working_dir = dir_open_root();
 #endif
 
 #ifdef VM

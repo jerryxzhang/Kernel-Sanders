@@ -10,8 +10,8 @@
 #define MAX_NAME_LEN 60
 #define MAX_ARGS 100
 #define INIT_PID 0
-#define MAX_FILES 20
-#define MAX_MMAPPINGS 20
+#define MAX_FILES 16
+#define MAX_MMAPPINGS 16
 
 /** A single element in the system process table. */
 struct process {
@@ -25,6 +25,8 @@ struct process {
     /** Ids of this process and its parent. */
     pid_t pid;
     pid_t parent_pid; /** -1 if parent has died. */
+
+    struct dir* working_dir; 
 
     /** An array of pointers to open files **/
     int files[MAX_FILES];

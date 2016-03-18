@@ -8,17 +8,19 @@ struct file {
     struct inode *inode;        /*!< File's inode. */
     off_t pos;                  /*!< Current position. */
     bool deny_write;            /*!< Has file_deny_write() been called? */
+    bool is_dir;
 };
 
 /*! Opens a file for the given INODE, of which it takes ownership,
     and returns the new file.  Returns a null pointer if an
     allocation fails or if INODE is null. */
-struct file * file_open(struct inode *inode) {
+struct file * file_open(struct inode *inode, bool is_dir) {
     struct file *file = calloc(1, sizeof *file);
     if (inode != NULL && file != NULL) {
         file->inode = inode;
         file->pos = 0;
         file->deny_write = false;
+        file->is_dir = is_dir;
         return file;
     }
     else {
@@ -31,7 +33,7 @@ struct file * file_open(struct inode *inode) {
 /*! Opens and returns a new file for the same inode as FILE.
     Returns a null pointer if unsuccessful. */
 struct file * file_reopen(struct file *file) {
-    return file_open(inode_reopen(file->inode));
+    return file_open(inode_reopen(file->inode), file->is_dir);
 }
 
 /*! Closes FILE. */
