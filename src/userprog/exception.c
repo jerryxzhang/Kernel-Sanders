@@ -139,14 +139,16 @@ static void page_fault(struct intr_frame *f) {
     not_present = (f->error_code & PF_P) == 0;
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
+    
+    if (!user && (fault_addr == NULL || fault_addr == ~0)) PANIC("Kernel NullPointer Fault!\n");
 
     #ifdef VM
     if(not_present){
       void *upage = pg_round_down(fault_addr);
       struct hash *table = &process_current()->supp_page_table;
-      struct supp_page *spg = get_supp_page(table, upage);
 
         if (is_user_vaddr(upage)){
+            struct supp_page *spg = get_supp_page(table, upage);
             void* esp = thread_current()->in_sc ? thread_current()->esp :
                 f->esp;
             if (spg){
@@ -162,10 +164,9 @@ static void page_fault(struct intr_frame *f) {
         }
     }
     #endif
-    
+
     // Access is kernel verifying an address
     if (!user) {
-        if (fault_addr == NULL) PANIC("Kernel NullPointer Fault!\n");
         
         f->eip = (void (*) (void)) f->eax;
         f->eax = -1;
