@@ -108,10 +108,13 @@ bool filesys_create(const char *path, off_t initial_size) {
 /*! Opens the file with the given NAME.  Returns the new file if successful
     or a null pointer otherwise.  Fails if no file named NAME exists,
     or if an internal memory allocation fails. */
-struct file * filesys_open(const char *name) {
-    struct dir *dir = dir_open_root();
+struct file * filesys_open(const char *path) {
+    char name[NAME_MAX + 1];
+    struct dir *dir = NULL;
     struct inode *inode = NULL;
     bool is_dir;
+    if(!resolve_path(path, &dir, name))
+        return NULL;
 
     if (dir != NULL)
         dir_lookup(dir, name, &inode, &is_dir);
@@ -123,8 +126,11 @@ struct file * filesys_open(const char *name) {
 /*! Deletes the file named NAME.  Returns true if successful, false on failure.
     Fails if no file named NAME exists, or if an internal memory allocation
     fails. */
-bool filesys_remove(const char *name) {
-    struct dir *dir = dir_open_root();
+bool filesys_remove(const char *path) {
+    char name[NAME_MAX + 1];
+    struct dir *dir = NULL;
+    if(!resolve_path(path, &dir, name))
+        return false;
     bool success = dir != NULL && dir_remove(dir, name);
     dir_close(dir);
 
