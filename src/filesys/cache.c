@@ -39,6 +39,8 @@ static struct list buffer_cache;
 bool read_ahead;
 /* Block to read ahead. */
 block_sector_t next_block;
+/* Locks the cache list struct. */
+struct lock cache_lock;
 
 
 /* Periodically refreshes cache. */
@@ -89,23 +91,18 @@ struct cache_block *cache_read_block(block_sector_t sector) {
     /* Find a space for/a pointer to the block in the cache. */
 
     /* find_block sets accessed bit */
+    lock_acquire(&cache_lock); // Don't want cache altered while obtaining lock
     struct cache_block *cache_block = find_block(sector);
-    
-
-    /* While read happens, load next block from disk into cache. */
-    /* This is done on its own thread so it happens in the background. */
-
-    next_block = sector + 1;
-    read_ahead = 1;
     
     /* Reading from block.  Want to increment b to mark that there is an access
      * and if the lock is not held by anyone, acquire it to ensure nothing
      * writes to this block while reading. */
-    //lock_acquire(&cache_block->lock.r); // Ensure this is atomic
-    //cache_block->lock.b += 1;
-    //if (cache_block->lock.b == 1) // Only accessor, lock is free
-    //    sema_down(&cache_block->lock.g);
-    //lock_release(&cache_block->lock.r);
+    lock_acquire(&cache_block->lock.r); // Ensure this is atomic
+    cache_block->lock.b += 1;
+    if (cache_block->lock.b == 1) // Only accessor, lock is free
+        sema_down(&cache_block->lock.g);
+    lock_release(&cache_block->lock.r);
+    lock_release(&cache_lock);
     
     return cache_block;
 }
@@ -142,13 +139,13 @@ void cache_read_ahead(void *aux UNUSED) {
 
 struct cache_block *cache_write_block(block_sector_t sector) {
     /* Find a space for/a pointer to the block in the cache. */
+    lock_acquire(&cache_lock); // Don't want eviction before locking
     struct cache_block *cache_block = find_block(sector);
     
     /* Must have a lock before writing to cache. */
-    //sema_down(&cache_block->lock.g);
+    sema_down(&cache_block->lock.g);
     
-    /* Mark block as dirty for write (access set in find block). */
-    cache_block->dirty = 1;
+    lock_release(&cache_lock); // Unlock cache for eviction again
     
     return cache_block;
 }
@@ -195,6 +192,7 @@ struct cache_block *find_block(block_sector_t sector) {
             
             /* Initialize block. */
             sema_init(&cache_block->lock.g, 1);
+            lock_init(&cache_block->lock.r);
         }
         else {
             while (cache_block == NULL) {
@@ -216,6 +214,11 @@ struct cache_block *find_block(block_sector_t sector) {
         cache_block->dirty = 0;
         cache_block->recent_accesses = 0;
     }
+    
+    /* While read happens, load next block from disk into cache. */
+    /* This is done on its own thread so it happens in the background. */
+    next_block = sector + 1;
+    read_ahead = 1;
     
     /* Only entering this function if an access is being made. */
     cache_block->accessed = 1;
@@ -243,8 +246,11 @@ struct cache_block *cache_evict(void) {
         /* Get next eviction candidate. */
         temp = list_entry(e, struct cache_block, block_elem);
         
-        /* Update accordingly to keep track of oldest block. */
-        if (temp->recent_accesses < oldest) {
+        /* Only consider for eviction if nobody has a lock on block. */
+        /* Checking <= oldest because if every block has been accessed every
+         * clock for the past 64 clocks, then this would otherwise fail to
+         * return a victim when indeed there was a victim. */
+        if (temp->lock.b == 0 && temp->recent_accesses <= oldest) {
             oldest = temp->recent_accesses;
             victim = temp;
         }
@@ -339,8 +345,9 @@ void update_accesses(void *aux UNUSED) {
             blk->recent_accesses |= ((uint64_t) blk->accessed << 63);
             
             /* Clear the accessed bit so next time we accurately add to its access
-             * recency. */
-            blk->accessed = 0;
+             * recency, but only if nothing is still accessing it. */
+            if (blk->lock.b > 0)
+                blk->accessed = 0;
         }
         
         /* Sleep until next time we want to update. */
@@ -353,12 +360,12 @@ void update_accesses(void *aux UNUSED) {
 
 void cache_read_end(struct cache_block *cache_block) {
     
-    /* Release lock and account for stopping reading from cache. 
+    /* Release lock and account for stopping reading from cache. */
     lock_acquire(&cache_block->lock.r);
     cache_block->lock.b -= 1;
     if (cache_block->lock.b == 0) // Was last accesor, free lock
         sema_up(&cache_block->lock.g);
-    lock_release(&cache_block->lock.r);*/
+    lock_release(&cache_block->lock.r);
     
 }
 
@@ -367,6 +374,9 @@ void cache_read_end(struct cache_block *cache_block) {
 
 void cache_write_end(struct cache_block *cache_block) {
     /* Done writing, free lock. */
-    //sema_up(&cache_block->lock.g);
+    sema_up(&cache_block->lock.g);
+    
+    /* Mark as dirty to show that it has changed and is done changing. */
+    cache_block->dirty = 1;
 }
 
