@@ -93,6 +93,7 @@ struct cache_block *cache_read_block(block_sector_t sector) {
     /* find_block sets accessed bit */
     lock_acquire(&cache_lock); // Don't want cache altered while obtaining lock
     struct cache_block *cache_block = find_block(sector);
+    lock_release(&cache_lock);
     
     /* Reading from block.  Want to increment b to mark that there is an access
      * and if the lock is not held by anyone, acquire it to ensure nothing
@@ -102,7 +103,6 @@ struct cache_block *cache_read_block(block_sector_t sector) {
     if (cache_block->lock.b == 1) // Only accessor, lock is free
         sema_down(&cache_block->lock.g);
     lock_release(&cache_block->lock.r);
-    lock_release(&cache_lock);
     
     return cache_block;
 }
@@ -141,11 +141,10 @@ struct cache_block *cache_write_block(block_sector_t sector) {
     /* Find a space for/a pointer to the block in the cache. */
     lock_acquire(&cache_lock); // Don't want eviction before locking
     struct cache_block *cache_block = find_block(sector);
-    
+    lock_release(&cache_lock); // Unlock cache for eviction again
     /* Must have a lock before writing to cache. */
     sema_down(&cache_block->lock.g);
     
-    lock_release(&cache_lock); // Unlock cache for eviction again
     
     return cache_block;
 }
@@ -162,6 +161,7 @@ struct cache_block *cache_write_block(block_sector_t sector) {
  * @return cache_block - A pointer to the cache_block.
  */
 struct cache_block *find_block(block_sector_t sector) {
+   // printf("Looking for block %d\n", sector);
     /* List iterator for searching cache. */
     struct list_elem *e;
     
@@ -188,8 +188,7 @@ struct cache_block *find_block(block_sector_t sector) {
         /* First make space for the block. */
         if (list_size(&buffer_cache) < CACHE_BLOCKS) {
             /* Room in cache, create new block. */
-            cache_block = (struct cache_block *)malloc(sizeof(struct cache_block));
-            
+            cache_block = (struct cache_block *)calloc(1, sizeof(struct cache_block));
             /* Initialize block. */
             sema_init(&cache_block->lock.g, 1);
             lock_init(&cache_block->lock.r);
@@ -224,7 +223,6 @@ struct cache_block *find_block(block_sector_t sector) {
     cache_block->accessed = 1;
     /* Update recent_access so we don't accidentally immediately evict this */
     cache_block->recent_accesses |= ((uint64_t) 1 << 63);
-    
     return cache_block;
 }
 
@@ -239,9 +237,9 @@ struct cache_block *cache_evict(void) {
     struct list_elem *e;
     
     /* Block to evict. */
-    struct cache_block *victim = NULL, *temp;
+    struct cache_block *victim = NULL;
+    struct cache_block *temp;
     uint64_t oldest = -1; // -1 typecasts to largest 64-bit int
-    
     for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
         /* Get next eviction candidate. */
         temp = list_entry(e, struct cache_block, block_elem);
@@ -250,7 +248,8 @@ struct cache_block *cache_evict(void) {
         /* Checking <= oldest because if every block has been accessed every
          * clock for the past 64 clocks, then this would otherwise fail to
          * return a victim when indeed there was a victim. */
-        if (temp->lock.b == 0 && temp->recent_accesses <= oldest) {
+
+        if (temp->lock.b == 0 && temp->lock.g.value == 1 && temp->recent_accesses <= oldest) {
             oldest = temp->recent_accesses;
             victim = temp;
         }
@@ -261,7 +260,7 @@ struct cache_block *cache_evict(void) {
         if (oldest == 0)
             break;
     }
-    
+
     /* If no victim could have been chosen, don't try to remove anything. */
     if (victim != NULL) {
         /* Evict the page from the cache. */
@@ -270,8 +269,9 @@ struct cache_block *cache_evict(void) {
         /* If this is dirty, write it to memory before removing. */
         if (victim->dirty)
             block_write(fs_device, victim->sector, (uint8_t *) victim->data);
+    } else {
+        PANIC("Cache is full and completely locked down!\n");
     }
-    
     /* Return the block for the caller to handle. */
     return victim;
 }
