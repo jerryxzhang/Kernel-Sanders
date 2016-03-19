@@ -139,7 +139,7 @@ bool allocate_direct(block_sector_t *sector, off_t *length) {
     if (!free_map_allocate(sector)) return false;
     *length -= BLOCK_SECTOR_SIZE;
     block_clear(fs_device, *sector);
-//    printf("Allocating direct sector %d %d\n", *sector, *length);
+    //printf("Allocating direct sector %d %d\n", *sector, *length);
     return true;
 }
 
@@ -266,7 +266,7 @@ void free_double_indirect(block_sector_t sector, off_t *length) {
     Returns true if successful.
     Returns false if memory or disk allocation fails. */
 bool inode_create(block_sector_t sector, off_t length) {
-    DPRINTF("CREATING INODE AT SECTOR: %d\n", sector)
+//    printf("CREATING INODE AT SECTOR: %d\n", sector);
     struct inode_disk *disk_inode = NULL;
     ASSERT(length >= 0);
 //    printf("Creating inode at %d\n", sector);
@@ -274,8 +274,8 @@ bool inode_create(block_sector_t sector, off_t length) {
        one sector in size, and you should fix that. */
     ASSERT(sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
-    struct cache_block *cache_block = cache_write_block(sector);
     block_clear(fs_device, sector);
+    struct cache_block *cache_block = cache_write_block(sector);
     unsigned i;
 
     disk_inode = (struct inode_disk *) cache_block->data;

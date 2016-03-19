@@ -83,11 +83,11 @@ void cache_init(void) {
     
     /* Devote threads to refreshing cache (write dirty blocks to memory) and
      * updating accessed bits. */
-//    thread_create("cache_refresh", PRI_DEFAULT, refresh_cache_cycle, NULL);
+    thread_create("cache_refresh", PRI_DEFAULT, refresh_cache_cycle, NULL);
     thread_create("cache_accesses", PRI_DEFAULT, update_accesses, NULL);
     
     /* Takes care of reading ahead if there is reading ahead to be done. */
-//    thread_create("cache_read_ahead", PRI_DEFAULT, cache_read_ahead, NULL);
+    thread_create("cache_read_ahead", PRI_DEFAULT, cache_read_ahead, NULL);
 }
 
 /*!
@@ -229,7 +229,7 @@ struct cache_block *find_block(block_sector_t sector) {
     for (i = 0; i < CACHE_BLOCKS; i++) {  
         /* If this is a match, stop iterating. */
         if (buffer[i].sector == sector) {
-//            printf("found block %d in spot %d\n", sector, i);
+      //      printf("found block %d in spot %d\n", sector, i);
             cache_read_begin(buffer+i);
             ASSERT(buffer[i].sector == sector);
             cache_block = buffer + i;
