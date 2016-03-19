@@ -148,8 +148,8 @@ void cache_read_ahead(void *aux UNUSED) {
     while(1) {
         if (read_ahead) {
             /* Mark that we have read ahead. */
-            read_ahead = 0;            
             find_block(next_block);
+            read_ahead = 0;            
         }
     }
 }

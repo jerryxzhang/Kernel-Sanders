@@ -50,16 +50,19 @@ static bool resolve_path(const char* path, struct dir **dir, char *name){
     off_t length;
     bool is_dir;
     struct inode *inode;
-    if(*path == '\0'){
-        return false;
+    switch (*path) {
+        case '\0':
+            return false;
+        case '/':
+            *dir = dir_open_root();
+            path++;
+            break;
+        case '.':
+            if (*(path+1) == '/') path++;
+        default:
+            *dir = dir_reopen(process_current()->working_dir);
     }
-    else if (*path == '/'){
-        *dir = dir_open_root();
-        path++;
-    }
-    else{
-        *dir = dir_reopen(process_current()->working_dir);
-    }
+    
     while(true){
         length = 0;
         while (path[length] != '/' && path[length] != '\0'){
