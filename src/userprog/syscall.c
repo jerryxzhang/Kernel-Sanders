@@ -148,10 +148,10 @@ int wait(pid_t pid){
 }
 
 bool create(const char *file, unsigned initial_size){
-    DPRINTF("CREATING FILE\n")
     return create_dir_entry(file, initial_size, false);
 }
 
+/* to be used for both createing file and directories */
 bool create_dir_entry(const char *path, unsigned initial_size, bool is_dir){
     bool status = false;
     if (!r_valid((uint8_t *)path)){
@@ -164,7 +164,6 @@ bool create_dir_entry(const char *path, unsigned initial_size, bool is_dir){
 }
 
 bool remove(const char *file){
-    DPRINTF("Removing %s\n", file)
     bool status = false;
     if (!r_valid((uint8_t *)file)){
         thread_exit(EXIT_FAILURE);
@@ -262,7 +261,6 @@ int read(int fd, void *buffer, unsigned length){
 }
 
 int write(int fd, const void *buffer, unsigned length){
-    DPRINTF("WRITING TO FILE\n")
     int index;
     int bytes_written = EXIT_FAILURE;
     int chunk_written;
@@ -467,28 +465,28 @@ void free_mmappings(){
 }
 
 bool chdir(const char *dir) {
-    // use open, which already has the checks
-    int fd = open(dir);
+    if (!r_valid((uint8_t *)dir)){
+        thread_exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
+    }
+    struct file* file = filesys_open(dir);
     struct dir* new_dir;
     struct dir* old_dir;
-    struct file* file;
     struct process* cur_proc;
 
-    if (fd == EXIT_FAILURE)
+    if (!file)
         return false;
 
-    cur_proc = process_current();
-    file = open_files[cur_proc->files[fd]];
     if (!file_is_dir(file)){
-        close(fd);
+        file_close(file);
         return false;
     }
     new_dir = dir_reopen((struct dir*)file);
-    close(fd);
+    file_close(file);
 
     if(!dir)
         return false;
-
+    cur_proc = process_current();
     old_dir = cur_proc->working_dir;
     cur_proc->working_dir = new_dir;
     dir_close(old_dir);
@@ -496,7 +494,6 @@ bool chdir(const char *dir) {
 }
 
 bool mkdir(const char *dir){
-    DPRINTF("MAKING DIRECTORY\n")
     return create_dir_entry(dir, 4, true);
 }
 
