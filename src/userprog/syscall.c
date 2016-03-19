@@ -10,6 +10,8 @@
 #include "userprog/process.h"
 #include "userprog/exception.h"
 #include "vm/page.h"
+#include "filesys/directory.h"
+#include <string.h>
 
 #define MAX_GLOBAL_MAPPINGS MAX_PROCESSES * 2
 
@@ -46,7 +48,7 @@ void syscall_init(void) {
 }
 
 static void syscall_handler(struct intr_frame *f) {
-    if (!w_valid(f->esp)) thread_exit(-1);
+    if (!w_valid(f->esp)) thread_exit(EXIT_FAILURE);
     thread_current()->esp = f->esp;
     thread_current()->in_sc = true;
 
@@ -101,9 +103,24 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_MUNMAP:
             munmap((mapid_t)getArg(1, f));
             break;
+        case SYS_CHDIR:
+            f->eax = chdir((const char*) getArg(1, f));
+            break;
+        case SYS_MKDIR:
+            f->eax = mkdir((const char*) getArg(1, f));
+            break;
+        case SYS_READDIR:
+            f->eax = readdir(getArg(1, f), (char *) getArg(2, f));
+            break;
+        case SYS_ISDIR:
+            f->eax = isdir(getArg(1, f));
+            break;
+        case SYS_INUMBER:
+            f->eax = inumber(getArg(1, f));
+            break;
         default:
             printf("Not implemented!\n");
-            thread_exit(-1);
+            thread_exit(EXIT_FAILURE);
             break;
     }
     thread_current()->in_sc = false;
@@ -132,19 +149,24 @@ int wait(pid_t pid){
 }
 
 bool create(const char *file, unsigned initial_size){
+    return create_dir_entry(file, initial_size, false);
+}
+
+bool create_dir_entry(const char *path, unsigned initial_size, bool is_dir){
     bool status = false;
-    if (!r_valid((uint8_t *)file)){
+    if (!r_valid((uint8_t *)path)){
         thread_exit(EXIT_FAILURE);
     }
     else{
         lock_acquire(&filesys_lock);
-        status = filesys_create(file, initial_size);
+        status = filesys_create(path, initial_size, is_dir);
         lock_release(&filesys_lock); 
     }
     return status;
 }
 
 bool remove(const char *file){
+    DPRINTF("Removing %s\n", file)
     bool status = false;
     if (!r_valid((uint8_t *)file)){
         thread_exit(EXIT_FAILURE);
@@ -209,7 +231,9 @@ int read(int fd, void *buffer, unsigned length){
     if (fd >= 0 && fd < MAX_FILES) {
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1 && open_files[index]) {
+        if (index != -1 && open_files[index] &&
+            !file_is_dir(open_files[index])) {
+
             bytes_read = 0;
             chunk_read = 1;
             page = 0;
@@ -225,7 +249,7 @@ int read(int fd, void *buffer, unsigned length){
             while (length > 0 && chunk_read > 0){
                 if (!w_valid((uint8_t*)buffer)){
                     lock_release(&filesys_lock);
-                    thread_exit(-1);
+                    thread_exit(EXIT_FAILURE);
                     return EXIT_FAILURE;
                 }
                 pin_page(supp_table, (void*)buffer);
@@ -256,7 +280,7 @@ int write(int fd, const void *buffer, unsigned length){
         for (addr = (void*)buffer; addr < (void*)((off_t)buffer + length);
             addr += PGSIZE){
             if (!r_valid((uint8_t*)addr)){
-                thread_exit(-1);
+                thread_exit(EXIT_FAILURE);
                 return EXIT_FAILURE;
             }
         }
@@ -266,7 +290,8 @@ int write(int fd, const void *buffer, unsigned length){
     if (fd >= 0 && fd < MAX_FILES) {
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1 && open_files[index]) {
+        if (index != -1 && open_files[index] &&
+            !file_is_dir(open_files[index])) {
             bytes_written = 0;
             chunk_written = 1;
             page = 0;
@@ -282,7 +307,7 @@ int write(int fd, const void *buffer, unsigned length){
             while (length > 0 && chunk_written > 0){
                 if (!r_valid((uint8_t*)buffer)){
                     lock_release(&filesys_lock);
-                    thread_exit(-1);
+                    thread_exit(EXIT_FAILURE);
                     return EXIT_FAILURE;
                 }
                 pin_page(supp_table, (void*)buffer);
@@ -306,7 +331,7 @@ void seek(int fd, unsigned position){
     if (fd >= 0 && fd < MAX_FILES) {
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1) 
+        if (index != -1 && open_files[index]) 
             file_seek(open_files[index], position);
         lock_release(&filesys_lock);
     }
@@ -318,7 +343,7 @@ unsigned tell(int fd){
     if (fd >= 0 && fd < MAX_FILES) {
         lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1) {
+        if (index != -1 && open_files[index]) {
             position = file_tell(open_files[index]);
         }
         lock_release(&filesys_lock);
@@ -470,10 +495,96 @@ void free_mmappings(){
     }
 }
 
+bool chdir(const char *dir) {
+    // use open, which already has the checks
+    int fd = open(dir);
+    struct dir* new_dir;
+    struct dir* old_dir;
+    struct file* file;
+    struct process* cur_proc;
+
+    if (fd == EXIT_FAILURE)
+        return false;
+
+    cur_proc = process_current();
+    file = open_files[cur_proc->files[fd]];
+    if (!file_is_dir(file)){
+        close(fd);
+        return false;
+    }
+    new_dir = dir_reopen((struct dir*)file);
+    close(fd);
+
+    if(!dir)
+        return false;
+
+    old_dir = cur_proc->working_dir;
+    cur_proc->working_dir = new_dir;
+    dir_close(old_dir);
+    return true;
+}
+
+bool mkdir(const char *dir){
+    return create_dir_entry(dir, 8, true);
+}
+
+bool readdir(int fd, char name[READDIR_MAX_LEN + 1]){
+    int index;
+    bool status = false;
+    if(!w_valid((uint8_t*)name)){
+        thread_exit(EXIT_FAILURE);
+        return false;
+    }
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1 && open_files[index] &&
+            file_is_dir(open_files[index])) {
+            do{
+                status = dir_readdir((struct dir *)(open_files[index]), name);
+            }while (status && (strcmp(name, PATH_WD) ||
+                strcmp(name, PATH_PARENT)));
+        }
+        lock_release(&filesys_lock);
+    }
+
+    return status;
+}
+
+bool isdir(int fd){
+    int index;
+    bool status = false;
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1 && open_files[index]) {
+            status = file_is_dir(open_files[index]);
+        }
+        lock_release(&filesys_lock);
+    }
+
+    return status;
+}
+
+int inumber(int fd){
+    int index;
+    int inumber = -1;
+    if (fd >= 0 && fd < MAX_FILES) {
+        lock_acquire(&filesys_lock);
+        index = process_current()->files[fd];
+        if (index != -1 && open_files[index]) {
+            inumber = filesys_get_inumber((struct dir *)(open_files[index]));
+        }
+        lock_release(&filesys_lock);
+    }
+
+    return inumber;
+}
+
 
 int getArg(int argnum, struct intr_frame *f) {
     int* addr = (int*) f->esp + argnum;
-    if (!r_valid((uint8_t*)addr) || !w_valid((uint8_t*)addr)) thread_exit(-1);
+    if (!r_valid((uint8_t*)addr) || !w_valid((uint8_t*)addr)) thread_exit(EXIT_FAILURE);
     return *(((int*) f->esp) + argnum);
 }
 

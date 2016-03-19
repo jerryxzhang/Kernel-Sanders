@@ -266,6 +266,7 @@ void free_double_indirect(block_sector_t sector, off_t *length) {
     Returns true if successful.
     Returns false if memory or disk allocation fails. */
 bool inode_create(block_sector_t sector, off_t length) {
+    DPRINTF("CREATING INODE AT SECTOR: %d\n", sector)
     struct inode_disk *disk_inode = NULL;
     ASSERT(length >= 0);
 //    printf("Creating inode at %d\n", sector);
@@ -573,3 +574,8 @@ void inode_allow_write (struct inode *inode) {
     inode->deny_write_cnt--;
 }
 
+/* Checks is inode is also opened in another place */
+bool inode_is_shared(struct inode* inode){
+    DPRINTF("INODE HAS %d OPENS\n", inode->open_cnt);
+    return inode->open_cnt > 1;
+}
