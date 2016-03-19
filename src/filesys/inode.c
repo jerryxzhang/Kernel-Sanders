@@ -337,6 +337,7 @@ struct inode * inode_open(block_sector_t sector) {
 
 /*! Reopens and returns INODE. */
 struct inode * inode_reopen(struct inode *inode) {
+    ASSERT(inode != NULL);
     if (inode != NULL)
         inode->open_cnt++;
     return inode;
