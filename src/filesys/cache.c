@@ -97,11 +97,9 @@ void cache_init(void) {
  *        it is loaded into the cache then read from.
  * 
  * @param sector - The sector on the disk to read from
- * @param buffer - Cache read from and loaded into caller's buffer
  * 
  * @return cache_block - Pointer to the cache block read from.
  */
-
 struct cache_block *cache_read_block(block_sector_t sector) {
     /* find_block sets accessed bit */
     struct cache_block *cache_block = find_block(sector);
@@ -109,6 +107,7 @@ struct cache_block *cache_read_block(block_sector_t sector) {
     return cache_block;
 }
 
+/** Acquires a read lock on the cache block. **/
 void cache_read_begin(struct cache_block *cache_block) {
     /* Reading from block.  Want to increment b to mark that there is an access
      * and if the lock is not held by anyone, acquire it to ensure nothing
@@ -123,6 +122,7 @@ void cache_read_begin(struct cache_block *cache_block) {
     lock_release(&cache_block->lock.r);
 }
 
+/** Attempts to get a read lock on the block, returns true if successful **/
 bool cache_read_try(struct cache_block *cache_block) {
     if (!lock_try_acquire(&cache_block->lock.r)) return false;
     
@@ -158,10 +158,9 @@ void cache_read_ahead(void *aux UNUSED) {
  * cache_write_block
  * 
  * @descr Writes to a block in the cache.  If the block is not in the cache,
- *        it is loaded into the cache then written to.
+ *        it is loaded into the cache
  * 
  * @param sector - The sector on disk to write to
- * @param data - The data to write to the cache
  */
 
 struct cache_block *cache_write_block(block_sector_t sector) {
@@ -171,6 +170,7 @@ struct cache_block *cache_write_block(block_sector_t sector) {
     return cache_block;
 }
 
+/** Acquires a write lock on the block. **/
 void cache_write_begin(struct cache_block *cache_block) {
     /* Must have a lock before writing to cache. */
     lock_acquire(&cache_block->lock.extra);
@@ -178,11 +178,14 @@ void cache_write_begin(struct cache_block *cache_block) {
     lock_release(&cache_block->lock.extra);
 }
 
+/** Tries to acquire a write lock. Return true if successful. */
 bool cache_write_try(struct cache_block *cache_block) {
     /* Must have a lock before writing to cache. */
     return sema_try_down(&cache_block->lock.g);
 }
 
+/** Atomically upgrades from holding a read lock to holding a 
+ * write lock. Must be holding a read lock before calling. */
 void cache_upgrade(struct cache_block *cache_block) {
     lock_acquire(&cache_block->lock.r); // Ensure this is atomic
     cache_block->lock.b -= 1;
@@ -198,6 +201,8 @@ void cache_upgrade(struct cache_block *cache_block) {
     }
 }
 
+/** Atomically downgrades from holding a write lock to holding a 
+ * read lock. */
 void cache_downgrade(struct cache_block *cache_block) {
     lock_acquire(&cache_block->lock.r); // Ensure this is atomic
     ASSERT(cache_block->lock.b == 0);
@@ -211,13 +216,11 @@ void cache_downgrade(struct cache_block *cache_block) {
  * @descr Finds the block in the cache, or loads it into the cache, evicting
  *        a block if necessary.
  * 
- * @param blk - Block in memory associated with memory access.
  * @param sector - Sector in disk associated with memory access.
  * 
  * @return cache_block - A pointer to the cache_block.
  */
 struct cache_block *find_block(block_sector_t sector) {
-//    printf("Looking for block %d\n", sector);
     
     /* Block in cache (NULL if not found) */
     struct cache_block *cache_block = NULL;
@@ -229,19 +232,14 @@ struct cache_block *find_block(block_sector_t sector) {
     for (i = 0; i < CACHE_BLOCKS; i++) {  
         /* If this is a match, stop iterating. */
         if (buffer[i].sector == sector) {
-      //      printf("found block %d in spot %d\n", sector, i);
             cache_read_begin(buffer+i);
             ASSERT(buffer[i].sector == sector);
             cache_block = buffer + i;
-//            cache_read_end(cache_block);
-  //          cache_write_begin(cache_block);
             break;
         }
     }
     
     if (cache_block == NULL) {
-        /* Block was not in the cache, retrieve it from memory. */
-        
         // See if there is free space
         for (i = 0; i < CACHE_BLOCKS; i++) {    
             if (!cache_write_try(buffer+i)) continue;
@@ -321,7 +319,7 @@ struct cache_block *cache_evict(void) {
     } else {
         PANIC("Cache is full and completely locked down!\n");
     }
-    //printf("Evicted %d\n", victim->sector);
+    
     /* Return the block for the caller to handle. */
     return victim;
 }
@@ -405,6 +403,9 @@ void update_accesses(void *aux UNUSED) {
         timer_msleep(UPDATE_ACCESS_MS);
     }
 }
+
+
+/** Releases a read lock on the block. */
 void cache_read_end(struct cache_block *cache_block) {
     
     /* Release lock and account for stopping reading from cache. */
@@ -412,10 +413,11 @@ void cache_read_end(struct cache_block *cache_block) {
     cache_block->lock.b -= 1;
     if (cache_block->lock.b == 0) // Was last accesor, free lock
         sema_up(&cache_block->lock.g);
-    lock_release(&cache_block->lock.r);
-    
+    lock_release(&cache_block->lock.r);    
 }
 
+
+/** Releases a write lock on the block and marks it dirty. */
 void cache_write_end(struct cache_block *cache_block) {
     /* Done writing, free lock. */
     sema_up(&cache_block->lock.g);

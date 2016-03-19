@@ -68,7 +68,6 @@ bool is_valid_inode(const struct inode_disk *inode) {
  * The position must be less than the file size.
  */
 static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
-//    printf("getting block %d\n", inode->sector);
     ASSERT(inode != NULL);
     block_sector_t blocks = pos / BLOCK_SECTOR_SIZE;
     block_sector_t single;
@@ -139,7 +138,6 @@ bool allocate_direct(block_sector_t *sector, off_t *length) {
     if (!free_map_allocate(sector)) return false;
     *length -= BLOCK_SECTOR_SIZE;
     block_clear(fs_device, *sector);
-    //printf("Allocating direct sector %d %d\n", *sector, *length);
     return true;
 }
 
@@ -149,7 +147,6 @@ bool allocate_direct(block_sector_t *sector, off_t *length) {
 bool allocate_indirect(block_sector_t *sector, off_t *length) {
     ASSERT(*length > 0);
     if (!free_map_allocate(sector)) return false;
-//    printf("Allocating indirect sector %d %d\n", *sector, *length);
     unsigned i;
     block_clear(fs_device, *sector);
     struct cache_block *cache_block = cache_write_block(*sector);
@@ -168,7 +165,6 @@ bool allocate_indirect(block_sector_t *sector, off_t *length) {
 bool allocate_double_indirect(block_sector_t *sector, off_t *length) {
     ASSERT(*length > 0);
     if (!free_map_allocate(sector)) return false;
-    //printf("Allocating double indirect sector %d %d\n", *sector, *length);
     unsigned i;
     block_clear(fs_device, *sector);
     struct cache_block *cache_block = cache_write_block(*sector);
@@ -185,7 +181,6 @@ bool allocate_double_indirect(block_sector_t *sector, off_t *length) {
 bool grow_direct(block_sector_t *sector) {
     ASSERT(*sector == 0);
     if (!free_map_allocate(sector)) return false;
-//    printf("growing direct %u\n", *sector);
     block_clear(fs_device, *sector);
     return true;
 }
@@ -197,7 +192,6 @@ bool grow_indirect(block_sector_t *sector, block_sector_t index) {
     if (index == 0) {
         if (!grow_direct(sector)) return false;
     }
-  //  printf("indirect sector %d\n", *sector);
     struct cache_block *cache_block = cache_write_block(*sector);
     ASSERT(index < ENTRIES_PER_SECTOR);
     block_sector_t *sectors = (block_sector_t*) cache_block->data;
@@ -266,10 +260,8 @@ void free_double_indirect(block_sector_t sector, off_t *length) {
     Returns true if successful.
     Returns false if memory or disk allocation fails. */
 bool inode_create(block_sector_t sector, off_t length) {
-//    printf("CREATING INODE AT SECTOR: %d\n", sector);
     struct inode_disk *disk_inode = NULL;
     ASSERT(length >= 0);
-//    printf("Creating inode at %d\n", sector);
     /* If this assertion fails, the inode structure is not exactly
        one sector in size, and you should fix that. */
     ASSERT(sizeof *disk_inode == BLOCK_SECTOR_SIZE);
@@ -417,7 +409,6 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     uint8_t *buffer = buffer_;
     struct cache_block *cache_block;
     off_t bytes_read = 0;
-    //printf("Read! inode %d size %d offs %d\n", inode->sector, size, offset);
 
     while (size > 0) {
         /* Disk sector to read, starting byte offset within sector. */
@@ -464,7 +455,6 @@ bool inode_extend(struct inode* inode, block_sector_t num) {
     bool success = true;
 
     while (num > 0 && success) {
-//        printf("get %d %d\n", inode->sector, num);
         num_blocks += 1;
         num -= 1;
 
@@ -472,7 +462,6 @@ bool inode_extend(struct inode* inode, block_sector_t num) {
 
         // Check it its in the direct nodes
         if (blocks < NUM_DIRECT) {
-  //          printf("direct block %u\n", blocks);
             success &= grow_direct(&data->direct[blocks]);
             continue;
         } 
@@ -482,7 +471,6 @@ bool inode_extend(struct inode* inode, block_sector_t num) {
         off_t single = blocks / ENTRIES_PER_SECTOR; 
         blocks = blocks % ENTRIES_PER_SECTOR;
     
-    //    printf("doing double %u, %u\n", single, blocks);
         // Check if it fits in the single indirect nodes.
         if (single < NUM_SINGLE_INDIRECT) {
             success &= grow_indirect(&data->single_indirect[single], blocks);
@@ -506,7 +494,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size, off_t
     bool locked = false;
     off_t newlen = size + offset;
 
-    //printf("Write! inode %d size %d offs %d\n", inode->sector, size, offset);
     if (inode->deny_write_cnt)
         return 0;
     
@@ -527,7 +514,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size, off_t
     while (size > 0) {
         /* Sector to write, starting byte offset within sector. */
         block_sector_t sector_idx = byte_to_sector(inode, offset);
-  //      printf("Got secotr %u %u %d\n", inode->sector, sector_idx, offset);
         int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
         /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -555,7 +541,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size, off_t
         inode_set_length(inode, newlen);
         lock_release(&inode->extension_lock);
     }
-    //printf("wrote %d\n", bytes_written);
     return bytes_written;
 }
 
@@ -577,6 +562,5 @@ void inode_allow_write (struct inode *inode) {
 
 /* Checks is inode is also opened in another place */
 bool inode_is_shared(struct inode* inode){
-    DPRINTF("INODE HAS %d OPENS\n", inode->open_cnt);
     return inode->open_cnt > 1;
 }
