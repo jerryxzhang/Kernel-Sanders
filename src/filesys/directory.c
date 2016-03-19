@@ -164,10 +164,16 @@ bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector,
     }
     ilength = inode_length(dir->inode);
     if(ilength == ofs){
+        DPRINTF("EXTENDING DIR\n")
         ilength = ilength % BLOCK_SECTOR_SIZE;
-        if(!ilength || ilength + sizeof(e) > BLOCK_SECTOR_SIZE)
-            if(!inode_extend(dir->inode, 1))
+        if(!ilength || ilength + sizeof(e) > BLOCK_SECTOR_SIZE){
+            DPRINTF("ALLOCATING MORE SECTOR\n")
+            if(!inode_extend(dir->inode, 1)){
+                DPRINTF("FAILED TO ALLOCATE MORE SECTOR\n")
                 goto done;
+            }
+        }
+        DPRINTF("INCREASING LENGTH BY 1 ENTRY\n")
         inode_set_length(dir->inode, ofs + sizeof(e));
         if(inode_read_at(dir->inode, &e, sizeof(e), ofs) != sizeof(e))
             goto done;

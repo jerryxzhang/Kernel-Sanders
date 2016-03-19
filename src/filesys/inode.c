@@ -262,6 +262,7 @@ void free_double_indirect(block_sector_t sector, off_t *length) {
     Returns true if successful.
     Returns false if memory or disk allocation fails. */
 bool inode_create(block_sector_t sector, off_t length) {
+    DPRINTF("CREATING INODE AT SECTOR: %d\n", sector)
     struct inode_disk *disk_inode = NULL;
     ASSERT(length >= 0);
     //printf("Creating inode at %d\n", sector);
