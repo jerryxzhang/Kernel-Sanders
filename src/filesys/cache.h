@@ -15,6 +15,8 @@
 struct rw_lock {
     struct lock r; // Lock used for atomic operations to rw_lock
     struct semaphore g; // Lock acquired by writers to ensure mutual exclusion
+
+    struct lock extra; // Used for upgrades
     
     int b; // Number of accessors
 };
@@ -29,6 +31,8 @@ struct rw_lock {
 struct cache_block {
     struct list_elem block_elem; // For iterating over buffer cache
     
+    bool valid;
+
     char data[BLOCK_SECTOR_SIZE]; // Data being cached
     block_sector_t sector; // in->sector gives incomplete type
     

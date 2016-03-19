@@ -34,14 +34,12 @@
 
 
 /* Cache of file blocks */
-static struct list buffer_cache;
+struct cache_block buffer[CACHE_BLOCKS];
+
 /* Used by read ahead thread to know if reading ahead required. */
 bool read_ahead;
 /* Block to read ahead. */
 block_sector_t next_block;
-/* Locks the cache list struct. */
-struct lock cache_lock;
-
 
 /* Periodically refreshes cache. */
 void refresh_cache_cycle(void *aux UNUSED);
@@ -54,25 +52,42 @@ struct cache_block *find_block(block_sector_t sector);
 /* Implemented to read next block from disk on block read. */
 void cache_read_ahead(void *args);
 
+void cache_read_begin(struct cache_block *cache_block);
+void cache_write_begin(struct cache_block *cache_block);
+bool cache_read_try(struct cache_block *cache_block);
+bool cache_write_try(struct cache_block *cache_block);
+void cache_upgrade(struct cache_block *cache_block);
+void cache_downgrade(struct cache_block *cache_block);
+
 /*!
  * init_cache
  * 
  * @descr Initializes the file cache.
  */
 void cache_init(void) {
-    /* Initialize the cache list. */
-    list_init(&buffer_cache);
-    lock_init(&cache_lock);
     
     read_ahead = 0;
     
+    int i;
+    for (i = 0; i < CACHE_BLOCKS; i++) {    
+        buffer[i].valid = false;
+        buffer[i].sector = 0;
+
+        /* Initialize lock. */
+        sema_init(&buffer[i].lock.g, 1);
+        lock_init(&buffer[i].lock.r);
+        lock_init(&buffer[i].lock.extra);
+        buffer[i].lock.b = 0;
+        
+    }
+    
     /* Devote threads to refreshing cache (write dirty blocks to memory) and
      * updating accessed bits. */
-    thread_create("cache_refresh", PRI_DEFAULT, refresh_cache_cycle, NULL);
+//    thread_create("cache_refresh", PRI_DEFAULT, refresh_cache_cycle, NULL);
     thread_create("cache_accesses", PRI_DEFAULT, update_accesses, NULL);
     
     /* Takes care of reading ahead if there is reading ahead to be done. */
-    thread_create("cache_read_ahead", PRI_DEFAULT, cache_read_ahead, NULL);
+//    thread_create("cache_read_ahead", PRI_DEFAULT, cache_read_ahead, NULL);
 }
 
 /*!
@@ -88,23 +103,39 @@ void cache_init(void) {
  */
 
 struct cache_block *cache_read_block(block_sector_t sector) {
-    /* Find a space for/a pointer to the block in the cache. */
-
     /* find_block sets accessed bit */
-    lock_acquire(&cache_lock); // Don't want cache altered while obtaining lock
     struct cache_block *cache_block = find_block(sector);
-    lock_release(&cache_lock);
     
+    return cache_block;
+}
+
+void cache_read_begin(struct cache_block *cache_block) {
     /* Reading from block.  Want to increment b to mark that there is an access
      * and if the lock is not held by anyone, acquire it to ensure nothing
      * writes to this block while reading. */
     lock_acquire(&cache_block->lock.r); // Ensure this is atomic
     cache_block->lock.b += 1;
-    if (cache_block->lock.b == 1) // Only accessor, lock is free
+    if (cache_block->lock.b == 1) { // Only accessor, lock is free
+        lock_acquire(&cache_block->lock.extra);
         sema_down(&cache_block->lock.g);
+        lock_release(&cache_block->lock.extra);
+    }
     lock_release(&cache_block->lock.r);
+}
+
+bool cache_read_try(struct cache_block *cache_block) {
+    if (!lock_try_acquire(&cache_block->lock.r)) return false;
     
-    return cache_block;
+    cache_block->lock.b += 1;
+    if (cache_block->lock.b == 1) {
+        if (!sema_try_down(&cache_block->lock.g)) {
+            cache_block->lock.b -= 1;
+            lock_release(&cache_block->lock.r);
+            return false;
+        }
+    }
+    lock_release(&cache_block->lock.r);
+    return true;
 }
 
 /*!
@@ -117,12 +148,8 @@ void cache_read_ahead(void *aux UNUSED) {
     while(1) {
         if (read_ahead) {
             /* Mark that we have read ahead. */
-            read_ahead = 0;
-            
-            /* Get the next block. */
-            lock_acquire(&cache_lock);
+            read_ahead = 0;            
             find_block(next_block);
-            lock_release(&cache_lock);
         }
     }
 }
@@ -139,14 +166,43 @@ void cache_read_ahead(void *aux UNUSED) {
 
 struct cache_block *cache_write_block(block_sector_t sector) {
     /* Find a space for/a pointer to the block in the cache. */
-    lock_acquire(&cache_lock); // Don't want eviction before locking
     struct cache_block *cache_block = find_block(sector);
-    lock_release(&cache_lock); // Unlock cache for eviction again
-    /* Must have a lock before writing to cache. */
-    sema_down(&cache_block->lock.g);
-    
-    
+    cache_upgrade(cache_block); 
     return cache_block;
+}
+
+void cache_write_begin(struct cache_block *cache_block) {
+    /* Must have a lock before writing to cache. */
+    lock_acquire(&cache_block->lock.extra);
+    sema_down(&cache_block->lock.g);
+    lock_release(&cache_block->lock.extra);
+}
+
+bool cache_write_try(struct cache_block *cache_block) {
+    /* Must have a lock before writing to cache. */
+    return sema_try_down(&cache_block->lock.g);
+}
+
+void cache_upgrade(struct cache_block *cache_block) {
+    lock_acquire(&cache_block->lock.r); // Ensure this is atomic
+    cache_block->lock.b -= 1;
+    if (cache_block->lock.b == 0) {
+        lock_release(&cache_block->lock.r);
+        return;
+    } else {
+        lock_acquire(&cache_block->lock.extra);
+        lock_release(&cache_block->lock.r);
+        sema_down(&cache_block->lock.g);
+        lock_release(&cache_block->lock.extra);
+        return;
+    }
+}
+
+void cache_downgrade(struct cache_block *cache_block) {
+    lock_acquire(&cache_block->lock.r); // Ensure this is atomic
+    ASSERT(cache_block->lock.b == 0);
+    cache_block->lock.b += 1;
+    lock_release(&cache_block->lock.r);    
 }
 
 /*!
@@ -161,9 +217,7 @@ struct cache_block *cache_write_block(block_sector_t sector) {
  * @return cache_block - A pointer to the cache_block.
  */
 struct cache_block *find_block(block_sector_t sector) {
-   // printf("Looking for block %d\n", sector);
-    /* List iterator for searching cache. */
-    struct list_elem *e;
+//    printf("Looking for block %d\n", sector);
     
     /* Block in cache (NULL if not found) */
     struct cache_block *cache_block = NULL;
@@ -171,40 +225,39 @@ struct cache_block *find_block(block_sector_t sector) {
     /* Don't attempt to access block outside of device. */
     ASSERT(sector < block_size(fs_device));
     
-    for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
-        cache_block = list_entry(e, struct cache_block, block_elem);
-        
+    int i;
+    for (i = 0; i < CACHE_BLOCKS; i++) {  
         /* If this is a match, stop iterating. */
-        if (cache_block->sector == sector)
+        if (buffer[i].sector == sector) {
+//            printf("found block %d in spot %d\n", sector, i);
+            cache_read_begin(buffer+i);
+            ASSERT(buffer[i].sector == sector);
+            cache_block = buffer + i;
+//            cache_read_end(cache_block);
+  //          cache_write_begin(cache_block);
             break;
-            
-        /* Otherwise, go back to NULL in case this is the last elem. */
-        cache_block = NULL;
+        }
     }
     
     if (cache_block == NULL) {
         /* Block was not in the cache, retrieve it from memory. */
         
-        /* First make space for the block. */
-        if (list_size(&buffer_cache) < CACHE_BLOCKS) {
-            /* Room in cache, create new block. */
-            cache_block = (struct cache_block *)calloc(1, sizeof(struct cache_block));
-            /* Initialize block. */
-            sema_init(&cache_block->lock.g, 1);
-            lock_init(&cache_block->lock.r);
-        }
-        else {
-            while (cache_block == NULL) {
-                /* Need to evict.  Retain space from eviction. */
-                cache_block = cache_evict();
+        // See if there is free space
+        for (i = 0; i < CACHE_BLOCKS; i++) {    
+            if (!cache_write_try(buffer+i)) continue;
+            if (!buffer[i].valid) {
+                cache_block = buffer + i;
+                cache_block->valid = true;
+                break;
             }
+            cache_write_end(buffer+i);
         }
         
-        ASSERT (cache_block != NULL);
+        /* Need to evict.  Retain space from eviction. */
+        if (cache_block == NULL) {
+            cache_block = cache_evict();
+        }        
             
-        /* Add the block to our cache (evict removes it) */
-        list_push_back(&buffer_cache, &cache_block->block_elem);
-        
         /* Import block. */
         block_read(fs_device, sector, (uint8_t *) cache_block->data);
         cache_block->sector = sector;
@@ -212,6 +265,8 @@ struct cache_block *find_block(block_sector_t sector) {
         /* Caller will set these accordingly, but should start cleared. */
         cache_block->dirty = 0;
         cache_block->recent_accesses = 0;
+
+        cache_downgrade(cache_block); 
     }
     
     /* While read happens, load next block from disk into cache. */
@@ -233,45 +288,40 @@ struct cache_block *find_block(block_sector_t sector) {
  *        past, then evicts it from the cache.
  */
 struct cache_block *cache_evict(void) {
-    /* Iterator for cache. */
-    struct list_elem *e;
+    int i;
     
     /* Block to evict. */
     struct cache_block *victim = NULL;
     struct cache_block *temp;
-    uint64_t oldest = -1; // -1 typecasts to largest 64-bit int
-    for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
+    uint64_t oldest = ~0;
+    for(i = 0; i < CACHE_BLOCKS; i++) {
+        if (!cache_write_try(buffer+i)) continue;
+
         /* Get next eviction candidate. */
-        temp = list_entry(e, struct cache_block, block_elem);
-        
-        /* Only consider for eviction if nobody has a lock on block. */
+        temp = buffer + i;
+        ASSERT(temp->valid);
         /* Checking <= oldest because if every block has been accessed every
          * clock for the past 64 clocks, then this would otherwise fail to
          * return a victim when indeed there was a victim. */
 
-        if (temp->lock.b == 0 && temp->lock.g.value == 1 && temp->recent_accesses <= oldest) {
+        if (temp->recent_accesses <= oldest) {
+            if (victim) cache_write_end(victim);
             oldest = temp->recent_accesses;
             victim = temp;
+            continue;
         }
-        
-        /* Boundary case for optimization: If recent_accesses is 0, it has not
-         * been accessed in longer than we can tell.  Nothing can be, as far as
-         * we know, older, so we can stop iteration here. */
-        if (oldest == 0)
-            break;
+        cache_write_end(buffer+i);
     }
 
     /* If no victim could have been chosen, don't try to remove anything. */
     if (victim != NULL) {
-        /* Evict the page from the cache. */
-        list_remove(&victim->block_elem);
-        
         /* If this is dirty, write it to memory before removing. */
         if (victim->dirty)
             block_write(fs_device, victim->sector, (uint8_t *) victim->data);
     } else {
         PANIC("Cache is full and completely locked down!\n");
     }
+    //printf("Evicted %d\n", victim->sector);
     /* Return the block for the caller to handle. */
     return victim;
 }
@@ -282,21 +332,22 @@ struct cache_block *cache_evict(void) {
  * @descr Rewrites all dirty blocks in cache to memory.
  */
 void refresh_cache(void) {
-    /* Iterator for buffer cache list. */
-    struct list_elem *e;
-    
+    int i; 
     /* Temp for writing blocks to memory. */
     struct cache_block *blk;
     
-    for(e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
+    for(i = 0; i < CACHE_BLOCKS; i++) {
         /* Get the next cache file block. */
-        blk = list_entry(e, struct cache_block, block_elem);
+        blk = buffer + i;
+        if (!blk->valid) continue;
+        if (!cache_read_try(blk)) continue;
         
         /* Only care about writing to memory if dirty. */
         if (blk->dirty) {
             block_write(fs_device, blk->sector, (void *) blk->data);
             blk->dirty = 0;
         }
+        cache_read_end(blk);
     }
 }
 
@@ -308,9 +359,7 @@ void refresh_cache(void) {
 void refresh_cache_cycle(void *aux UNUSED) {
     while (1) {
         /* Write everything that's dirty back to memory. */
-        lock_acquire(&cache_lock);
         refresh_cache();
-        lock_release(&cache_lock);
         
         /* Sleep until next time we want to refresh. */
         timer_msleep(REFRESH_CACHE_MS);
@@ -327,15 +376,15 @@ void refresh_cache_cycle(void *aux UNUSED) {
  *        access is the same.
  */
 void update_accesses(void *aux UNUSED) {
-    /* Iterator for our buffer cache list. */
-    struct list_elem *e;
+    int i;
     struct cache_block *blk;
     
     while (1) {
-        for (e = list_begin(&buffer_cache); e != list_end(&buffer_cache); e = list_next(e)) {
+        for (i = 0; i < CACHE_BLOCKS; i++) {
             /* Use iterator to get next block in cache. */
-            blk = list_entry(e, struct cache_block, block_elem);
-            
+            blk = buffer + i;
+            if (!blk->valid) continue; 
+            if (!cache_read_try(blk)) continue;
             /* Make space for access bit on left. */
             blk->recent_accesses >>= 1;
             
@@ -348,16 +397,14 @@ void update_accesses(void *aux UNUSED) {
              * recency, but only if nothing is still accessing it. */
             if (blk->lock.b > 0)
                 blk->accessed = 0;
+
+            cache_read_end(blk);
         }
         
         /* Sleep until next time we want to update. */
         timer_msleep(UPDATE_ACCESS_MS);
     }
 }
-
-
-
-
 void cache_read_end(struct cache_block *cache_block) {
     
     /* Release lock and account for stopping reading from cache. */
@@ -368,9 +415,6 @@ void cache_read_end(struct cache_block *cache_block) {
     lock_release(&cache_block->lock.r);
     
 }
-
-
-
 
 void cache_write_end(struct cache_block *cache_block) {
     /* Done writing, free lock. */

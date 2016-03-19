@@ -68,6 +68,7 @@ bool is_valid_inode(const struct inode_disk *inode) {
  * The position must be less than the file size.
  */
 static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
+//    printf("getting block %d\n", inode->sector);
     ASSERT(inode != NULL);
     block_sector_t blocks = pos / BLOCK_SECTOR_SIZE;
     block_sector_t single;
@@ -79,7 +80,10 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     // Get the main node data from cache
     struct cache_block* cache_block = cache_read_block(inode->sector);
     data = (struct inode_disk*) cache_block->data;
-    ASSERT(is_valid_inode(data));
+    if (!is_valid_inode(data)) {
+        hex_dump(0, data, 512, false);
+        PANIC("nooo");
+    }
 
     // Check it its in the direct nodes
     if (blocks < NUM_DIRECT) {
@@ -264,13 +268,13 @@ void free_double_indirect(block_sector_t sector, off_t *length) {
 bool inode_create(block_sector_t sector, off_t length) {
     struct inode_disk *disk_inode = NULL;
     ASSERT(length >= 0);
-    //printf("Creating inode at %d\n", sector);
+//    printf("Creating inode at %d\n", sector);
     /* If this assertion fails, the inode structure is not exactly
        one sector in size, and you should fix that. */
     ASSERT(sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
-    block_clear(fs_device, sector);
     struct cache_block *cache_block = cache_write_block(sector);
+    block_clear(fs_device, sector);
     unsigned i;
 
     disk_inode = (struct inode_disk *) cache_block->data;
@@ -411,7 +415,7 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     uint8_t *buffer = buffer_;
     struct cache_block *cache_block;
     off_t bytes_read = 0;
-//    printf("Read! inode %d size %d offs %d\n", inode->sector, size, offset);
+    //printf("Read! inode %d size %d offs %d\n", inode->sector, size, offset);
 
     while (size > 0) {
         /* Disk sector to read, starting byte offset within sector. */
@@ -500,7 +504,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size, off_t
     bool locked = false;
     off_t newlen = size + offset;
 
-//    printf("Write! inode %d size %d offs %d\n", inode->sector, size, offset);
+    //printf("Write! inode %d size %d offs %d\n", inode->sector, size, offset);
     if (inode->deny_write_cnt)
         return 0;
     
