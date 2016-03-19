@@ -18,6 +18,7 @@
 struct mmapping {
     void* addr;
     struct file *file;
+    off_t length;
 };
 
 static struct mmapping all_mmappings[MAX_GLOBAL_MAPPINGS];
@@ -209,9 +210,8 @@ int filesize(int fd){
     int fsize = -1;
     if (fd >= 0 && fd < MAX_FILES) {
         index = process_current()->files[fd];
-        if (index != -1) {
-            if (open_files[index])
-                fsize = file_length(open_files[index]);
+        if (index != -1 && open_files[index]) {
+            fsize = file_length(open_files[index]);
         }
     }
     return fsize;
@@ -411,6 +411,7 @@ mapid_t mmap(int fd, void *addr){
     handle = file_reopen(handle);
     all_mmappings[slot].file = handle;
     all_mmappings[slot].addr = addr;
+    all_mmappings[slot].length = file_size;
     lock_release(&mmap_lock);
     pd = thread_current()->pagedir;
     for (index = 0; index < num_whole_pages; index++){
@@ -432,15 +433,16 @@ void munmap(mapid_t mapping){
     off_t i;
     struct hash *supp_table;
 
+
     if (mapping >= 0 && mapping < MAX_MMAPPINGS) {
         cur_proc = process_current();
         index = cur_proc->mmappings[mapping];
         if (index != -1) {
             mm = all_mmappings[index];
-            all_mmappings[index] = (struct mmapping){NULL,NULL};
+            all_mmappings[index] = (struct mmapping){NULL,NULL, 0};
             cur_proc->mmappings[mapping] = -1;
 
-            file_size = file_length(mm.file);
+            file_size = mm.length;
             supp_table = &process_current()->supp_page_table;
             for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size;
                 i += PGSIZE){
