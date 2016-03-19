@@ -38,10 +38,12 @@ which parts.
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
 Jerry - 25
+Tim - 20
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
 Jerry - inode, extensible files, cache concurrency
+Tim - cache, cache concurrency
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
@@ -69,7 +71,7 @@ struct rw_lock contains:
 struct lock r; - allows atomic operations to the entire rw lock
 struct semaphore g; - acquired to allow mutual exclusion between readers and writers
 struct lock extra; - a special lock that allows atomic upgrades from read to write mode
-int b; - tracks the number of readers. the first and last are responsible for the semaphore
+int b; - tracks the number of readers. the first and last are responsible for thesemaphore
 
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
@@ -89,7 +91,8 @@ a process must acquire extension_lock if its write will go over the end of the f
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 When A reads, A cannot read beyond the boundary of length as stored in 
-the file inode. B does not update length until its entire write is complete. Thus, A sees all of B's changes in one step.
+the file inode. B does not update length until its entire write is complete.
+Thus, A sees all of B's changes in one step.
 
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
@@ -98,7 +101,10 @@ the file inode. B does not update length until its entire write is complete. Thu
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
 
-Many processes writing to a file are unlikely to block many readers since they all have the same chance of managing to acquire the semaphore. In our implementation, it is possible for a large amount of readers to indefinitely block writers. 
+Many processes writing to a file are unlikely to block many readers since
+they all have the same chance of managing to acquire the semaphore. In our
+implementation, it is possible for a large amount of readers to indefinitely
+block writers. 
 
 ---- RATIONALE ----
 
@@ -150,14 +156,41 @@ The filesystem only supports files up to 8 MB, so no more than 1 double indirect
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct cache_block contains:
+struct list_elem block_elem; - List element for iterating over buffer cache
+bool valid; - True if the cache block is valid
+char data[BLOCK_SECTOR_SIZE]; - Data being cached
+block_sector_t sector; - Block sector the cache block is in
+uint64_t recent_accesses; - For checking how recently this was accessed
+bool dirty; - Set if block has been written to since last write to memory
+bool accessed; - Set if accessed since last check
+struct rw_lock lock; - Reader/writer lock
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+Our cache blocks have a recent_accesses attribute, which is updated every
+UPDATE_ACCESS_MS milliseconds.  In this, the recent_accesses attribute
+is shifted right, and the accessed bit is OR-ed into the most significant
+bit.  This gives at any time the most recently-accessed cache block the 
+largest recent_accesses value, and distinguishes two cache blocks with
+the same most-recent-access by their second-to-most-recent-access.  When
+evicting a block, we choose the block with the highest recent_accesses
+value that is not currently being read from or written to by anything.
+
 >> C3: Describe your implementation of write-behind.
 
+Every REFRESH_CACHE_MS milliseconds, we check all of the blocks in the 
+cache and if one is dirty, we write it to memory and clear the dirty
+bit.
+
 >> C4: Describe your implementation of read-ahead.
+
+Whenever we search for a block in the cache, we set a flag and global value
+with the next block to load.  This flag is then read in a thread of its own
+and a separate thread loads that next block into the cache.
 
 ---- SYNCHRONIZATION ----
 
