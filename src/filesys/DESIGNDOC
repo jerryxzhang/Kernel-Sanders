@@ -39,11 +39,13 @@ which parts.
    Make sure that each member's total time is listed.
 Jerry - 25
 Tim - 20
+Jack - 23
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
 Jerry - inode, extensible files, cache concurrency
 Tim - cache, cache concurrency
+Jack - Sub directories and related system calls
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
@@ -125,10 +127,30 @@ The filesystem only supports files up to 8 MB, so no more than 1 double indirect
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+both the dir_entry struct and the file struct have the member
+
+bool is_dir;
+
+added to indicate if they represent directories. Thus, directory entries can
+point to other directories.
+
+process has the member 
+
+struct dir* working_dir; 
+
+added to track its current wokring directory. It points to an open directory.
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+The only difference between relative and absolute is the directory that I
+start from. If absolute, then the start is ROOT, else it's the working 
+directory of the process. From there I try to open the next directory in the
+path. If sucessfull, I close the current directory and set the one just opened
+to the new current. This "crabbing" is repeated until the last token in the
+path. Any error on the way other signals that the path is not valid.
 
 ---- SYNCHRONIZATION ----
 
@@ -136,16 +158,26 @@ The filesystem only supports files up to 8 MB, so no more than 1 double indirect
 >> only one of two simultaneous attempts to remove a single file
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
+We did not implement anything to prevent the race condition.
 
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+our implementation prevents removing directories opened anywhere other than
+the instance trying to remove it. At the time of removal, we check that the
+open_cnt on the underlyin inode is 1, since dir_remove should be the only
+place that inode is open at, else it's still in use elsewhere.
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+It's represented as a pointer to a open directory because it's convenient have
+that to be able to quickly reference the directory and access it. As well, by
+having it open, we can prevent other processes from removing that directory,
+while it's the current working directory of a process.
 
                  BUFFER CACHE
                  ============
