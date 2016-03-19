@@ -166,6 +166,7 @@ bool create_dir_entry(const char *path, unsigned initial_size, bool is_dir){
 }
 
 bool remove(const char *file){
+    DPRINTF("Removing %s\n", file)
     bool status = false;
     if (!r_valid((uint8_t *)file)){
         thread_exit(EXIT_FAILURE);

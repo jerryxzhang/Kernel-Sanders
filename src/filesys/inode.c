@@ -571,5 +571,6 @@ void inode_allow_write (struct inode *inode) {
 
 /* Checks is inode is also opened in another place */
 bool inode_is_shared(struct inode* inode){
+    DPRINTF("INODE HAS %d OPENS\n", inode->open_cnt);
     return inode->open_cnt > 1;
 }

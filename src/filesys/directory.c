@@ -33,6 +33,7 @@ bool dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t parent) 
     }
     
     dir_add(new_dir, PATH_WD, sector, true);
+    dir_close(new_dir);
 
     return true;
 
@@ -186,6 +187,7 @@ done:
 /*! Removes any entry for NAME in DIR.  Returns true if successful, false on
     failure, which occurs only if there is no file with the given NAME. */
 bool dir_remove(struct dir *dir, const char *name) {
+    DPRINTF("IN DIR REMOVE\n")
     struct dir_entry e;
     struct inode *inode = NULL;
     bool success = false;
@@ -199,24 +201,33 @@ bool dir_remove(struct dir *dir, const char *name) {
     /* Find directory entry. */
     if (!lookup(dir, name, &e, &ofs))
         goto done;
-
+    DPRINTF("TARGET FOUND\n")
     /* Open inode. */
     inode = inode_open(e.inode_sector);
     if (inode == NULL)
         goto done;
+    DPRINTF("INODE OPENED\n");
 
     // check that directory is empty and that non one is using it
     if(e.is_dir){
+        DPRINTF("TARGET IS DIR\n")
         if(inode_is_shared(inode))
             goto done;
+        DPRINTF("TARGET IS NOT OPEN BY OTHERS\n")
         to_delete = dir_open(inode);
         if(!to_delete)
             goto done;
+        DPRINTF("OPENED TARGET DIR\n")
         while(dir_readdir(to_delete, deletion_content)){
-            if(strcmp(deletion_content, PATH_WD) ||
-                strcmp(deletion_content, PATH_PARENT))
+            DPRINTF("READ: %s\n", to_delete)
+            if(strcmp(deletion_content, PATH_WD) &&
+                strcmp(deletion_content, PATH_PARENT)){
+                DPRINTF("NON EMPTY CONTENT IS: %s\n", deletion_content)
                 goto done;
+            }
+                
         }
+        DPRINTF("DIR IS EMPTY\n")
     }
 
     /* Erase directory entry. */
