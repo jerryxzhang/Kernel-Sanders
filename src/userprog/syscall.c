@@ -18,6 +18,7 @@
 struct mmapping {
     void* addr;
     struct file *file;
+    off_t length;
 };
 
 static struct mmapping all_mmappings[MAX_GLOBAL_MAPPINGS];
@@ -138,9 +139,7 @@ pid_t exec(const char *file){
     pid_t pid;
     if (!r_valid((uint8_t*) file))
         return PID_ERROR;
-    lock_acquire(&filesys_lock);
     pid = (int) process_execute(file);
-    lock_release(&filesys_lock);
     return pid;
 }
 
@@ -152,58 +151,56 @@ bool create(const char *file, unsigned initial_size){
     return create_dir_entry(file, initial_size, false);
 }
 
+/* to be used for both createing file and directories */
 bool create_dir_entry(const char *path, unsigned initial_size, bool is_dir){
     bool status = false;
     if (!r_valid((uint8_t *)path)){
         thread_exit(EXIT_FAILURE);
     }
     else{
-        lock_acquire(&filesys_lock);
         status = filesys_create(path, initial_size, is_dir);
-        lock_release(&filesys_lock); 
     }
     return status;
 }
 
 bool remove(const char *file){
-    DPRINTF("Removing %s\n", file)
     bool status = false;
     if (!r_valid((uint8_t *)file)){
         thread_exit(EXIT_FAILURE);
     }
     else{
-        lock_acquire(&filesys_lock);
         status = filesys_remove(file);
-        lock_release(&filesys_lock); 
     }
     return status;
 }   
 
 int open(const char *file){
     int* files = process_current()->files;
-    int fd = EXIT_FAILURE;
-    int process_slot = 2;
+    int fd = 2;
     int global_slot = 0;
+    struct file* f;
     if (!r_valid((uint8_t *)file)){
         thread_exit(EXIT_FAILURE);
         return EXIT_FAILURE;
     }
+    while (fd < MAX_FILES && files[fd] != -1)
+        fd++;
+    if (fd == MAX_FILES)
+        return EXIT_FAILURE;
+    if (!(f = filesys_open(file)))
+        return EXIT_FAILURE;
     lock_acquire(&filesys_lock);
-    while (process_slot < MAX_FILES && files[process_slot] != -1)
-        process_slot++;
-    if (process_slot < MAX_FILES){
-        while (global_slot < MAX_GLOBAL_FILES && 
-            open_files[global_slot] != NULL)
-            global_slot++;
-        if (global_slot < MAX_GLOBAL_FILES){
-            open_files[global_slot] = filesys_open(file);
-            if (open_files[global_slot] != NULL) {
-                files[process_slot] = global_slot;
-                fd = process_slot;
-            }
-        }
+    while (global_slot < MAX_GLOBAL_FILES && 
+        open_files[global_slot] != NULL)
+        global_slot++;
+    if (global_slot == MAX_GLOBAL_FILES){
+        lock_release(&filesys_lock);
+        file_close(f);
+        return EXIT_FAILURE;
     }
+    open_files[global_slot] = f;      
     lock_release(&filesys_lock);
+    files[fd] = global_slot;
     return fd;
 }
 
@@ -211,11 +208,9 @@ int filesize(int fd){
     int index;
     int fsize = -1;
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
-        if (index != -1) {
+        if (index != -1 && open_files[index]) {
             fsize = file_length(open_files[index]);
-        lock_release(&filesys_lock);
         }
     }
     return fsize;
@@ -229,7 +224,6 @@ int read(int fd, void *buffer, unsigned length){
     off_t page;
     struct hash *supp_table;
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1 && open_files[index] &&
             !file_is_dir(open_files[index])) {
@@ -248,7 +242,6 @@ int read(int fd, void *buffer, unsigned length){
             }
             while (length > 0 && chunk_read > 0){
                 if (!w_valid((uint8_t*)buffer)){
-                    lock_release(&filesys_lock);
                     thread_exit(EXIT_FAILURE);
                     return EXIT_FAILURE;
                 }
@@ -263,7 +256,6 @@ int read(int fd, void *buffer, unsigned length){
                             PGSIZE : (off_t)(length % PGSIZE);
             }
         }
-        lock_release(&filesys_lock);
     }
     return bytes_read;
 }
@@ -288,7 +280,6 @@ int write(int fd, const void *buffer, unsigned length){
         return length;
     }
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1 && open_files[index] &&
             !file_is_dir(open_files[index])) {
@@ -306,7 +297,6 @@ int write(int fd, const void *buffer, unsigned length){
             }
             while (length > 0 && chunk_written > 0){
                 if (!r_valid((uint8_t*)buffer)){
-                    lock_release(&filesys_lock);
                     thread_exit(EXIT_FAILURE);
                     return EXIT_FAILURE;
                 }
@@ -321,19 +311,17 @@ int write(int fd, const void *buffer, unsigned length){
                             PGSIZE : (off_t)(length % PGSIZE);
             }
         }
-        lock_release(&filesys_lock);
     }
     return bytes_written;
 }
 
 void seek(int fd, unsigned position){
     int index;
-    if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
-        index = process_current()->files[fd];
-        if (index != -1 && open_files[index]) 
-            file_seek(open_files[index], position);
-        lock_release(&filesys_lock);
+    if (fd >= 0 && fd < MAX_FILES &&
+        (index = process_current()->files[fd]) != -1) {
+        if (!open_files[index])
+            return
+        file_seek(open_files[index], position);
     }
 }
 
@@ -341,12 +329,10 @@ unsigned tell(int fd){
     int index;
     unsigned position = -1;
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1 && open_files[index]) {
             position = file_tell(open_files[index]);
         }
-        lock_release(&filesys_lock);
     }
     return position;
 }
@@ -354,14 +340,12 @@ unsigned tell(int fd){
 void close(int fd){
     int index;
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1) {
             file_close(open_files[index]);
             open_files[index] = NULL;
         }
         process_current()->files[fd] = -1;
-        lock_release(&filesys_lock);
     }
 }
 
@@ -391,35 +375,21 @@ mapid_t mmap(int fd, void *addr){
             || is_kernel_vaddr(addr))
         return MAP_FAILED;
 
-    lock_acquire(&mmap_lock);
+    
     cur_proc = process_current();
     mappings = cur_proc->mmappings;
     while (mapping < MAX_MMAPPINGS && mappings[mapping] != -1)
         mapping++;
     if (mapping == MAX_MMAPPINGS){
-        lock_release(&mmap_lock);
         return MAP_FAILED;
     }
-
-    while (slot < MAX_GLOBAL_MAPPINGS && all_mmappings[slot].addr)
-        slot++;
-    if (slot == MAX_GLOBAL_MAPPINGS){
-        lock_release(&mmap_lock);
-        return MAP_FAILED;
-    }
-
-    lock_acquire(&filesys_lock);
     index = cur_proc->files[fd];
     if (index == -1){
-        lock_release(&filesys_lock);
-        lock_release(&mmap_lock);
         return MAP_FAILED;
     }
     handle = open_files[index];;
     file_size = file_length(handle);
     if (file_size == 0){
-        lock_release(&filesys_lock);
-        lock_release(&mmap_lock);
         return MAP_FAILED;
     }
     num_whole_pages = file_size / PGSIZE;
@@ -427,15 +397,20 @@ mapid_t mmap(int fd, void *addr){
     supp_table = &process_current()->supp_page_table;
     for (it = (off_t)addr; it < (off_t)addr + file_size; it += PGSIZE){
         if(get_supp_page(supp_table, (void*)it)){
-            lock_release(&filesys_lock);
-            lock_release(&mmap_lock);
             return MAP_FAILED;
         }
     }
+    lock_acquire(&mmap_lock);
+    while (slot < MAX_GLOBAL_MAPPINGS && all_mmappings[slot].addr)
+        slot++;
+    if (slot == MAX_GLOBAL_MAPPINGS){
+        return MAP_FAILED;
+    }
     handle = file_reopen(handle);
     all_mmappings[slot].file = handle;
-    lock_release(&filesys_lock);
     all_mmappings[slot].addr = addr;
+    all_mmappings[slot].length = file_size;
+    lock_release(&mmap_lock);
     pd = thread_current()->pagedir;
     for (index = 0; index < num_whole_pages; index++){
         create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index),
@@ -445,7 +420,6 @@ mapid_t mmap(int fd, void *addr){
         create_filesys_page(supp_table, (void*)((off_t)addr + PGSIZE * index),
             pd, NULL, handle, index * PGSIZE, last_page_bytes, true);
     cur_proc->mmappings[mapping] = slot;
-    lock_release(&mmap_lock);
     return mapping;
 }
 
@@ -457,18 +431,16 @@ void munmap(mapid_t mapping){
     off_t i;
     struct hash *supp_table;
 
+
     if (mapping >= 0 && mapping < MAX_MMAPPINGS) {
         cur_proc = process_current();
-        lock_acquire(&mmap_lock);
         index = cur_proc->mmappings[mapping];
         if (index != -1) {
             mm = all_mmappings[index];
-            all_mmappings[index] = (struct mmapping){NULL,NULL};
+            all_mmappings[index] = (struct mmapping){NULL,NULL, 0};
             cur_proc->mmappings[mapping] = -1;
-            lock_release(&mmap_lock);
 
-            lock_acquire(&filesys_lock);
-            file_size = file_length(mm.file);
+            file_size = mm.length;
             supp_table = &process_current()->supp_page_table;
             for (i = (off_t)mm.addr; i < (off_t)mm.addr + file_size;
                 i += PGSIZE){
@@ -480,11 +452,8 @@ void munmap(mapid_t mapping){
                 }
                 free_supp_page(supp_table, p);
             }
-            file_close(mm.file);
-            lock_release(&filesys_lock);           
+            file_close(mm.file);         
         }
-        else
-            lock_release(&mmap_lock);
     }            
 }
 
@@ -496,28 +465,28 @@ void free_mmappings(){
 }
 
 bool chdir(const char *dir) {
-    // use open, which already has the checks
-    int fd = open(dir);
+    if (!r_valid((uint8_t *)dir)){
+        thread_exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
+    }
+    struct file* file = filesys_open(dir);
     struct dir* new_dir;
     struct dir* old_dir;
-    struct file* file;
     struct process* cur_proc;
 
-    if (fd == EXIT_FAILURE)
+    if (!file)
         return false;
 
-    cur_proc = process_current();
-    file = open_files[cur_proc->files[fd]];
     if (!file_is_dir(file)){
-        close(fd);
+        file_close(file);
         return false;
     }
     new_dir = dir_reopen((struct dir*)file);
-    close(fd);
+    file_close(file);
 
     if(!dir)
         return false;
-
+    cur_proc = process_current();
     old_dir = cur_proc->working_dir;
     cur_proc->working_dir = new_dir;
     dir_close(old_dir);
@@ -525,7 +494,7 @@ bool chdir(const char *dir) {
 }
 
 bool mkdir(const char *dir){
-    return create_dir_entry(dir, 8, true);
+    return create_dir_entry(dir, 4, true);
 }
 
 bool readdir(int fd, char name[READDIR_MAX_LEN + 1]){
@@ -536,16 +505,14 @@ bool readdir(int fd, char name[READDIR_MAX_LEN + 1]){
         return false;
     }
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1 && open_files[index] &&
             file_is_dir(open_files[index])) {
             do{
                 status = dir_readdir((struct dir *)(open_files[index]), name);
-            }while (status && (strcmp(name, PATH_WD) ||
-                strcmp(name, PATH_PARENT)));
+            }while (status && (!strcmp(name, PATH_WD) ||
+                !strcmp(name, PATH_PARENT)));
         }
-        lock_release(&filesys_lock);
     }
 
     return status;
@@ -555,12 +522,10 @@ bool isdir(int fd){
     int index;
     bool status = false;
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1 && open_files[index]) {
             status = file_is_dir(open_files[index]);
         }
-        lock_release(&filesys_lock);
     }
 
     return status;
@@ -570,12 +535,10 @@ int inumber(int fd){
     int index;
     int inumber = -1;
     if (fd >= 0 && fd < MAX_FILES) {
-        lock_acquire(&filesys_lock);
         index = process_current()->files[fd];
         if (index != -1 && open_files[index]) {
             inumber = filesys_get_inumber((struct dir *)(open_files[index]));
         }
-        lock_release(&filesys_lock);
     }
 
     return inumber;

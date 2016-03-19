@@ -28,6 +28,8 @@ bool dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t parent) 
 
     struct dir *new_dir = dir_open(inode_open(sector));
 
+
+    // Add actual entries pointing to .. and .
     if(parent){
         dir_add(new_dir, PATH_PARENT, parent, true);
     }
@@ -136,7 +138,6 @@ bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector,
     struct dir_entry e;
     off_t ofs;
     bool success = false;
-    off_t ilength;
 
     ASSERT(dir != NULL);
     ASSERT(name != NULL);
@@ -162,22 +163,6 @@ bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector,
         if (!e.in_use)
             break;
     }
-    ilength = inode_length(dir->inode);
-    if(ilength == ofs){
-        DPRINTF("EXTENDING DIR\n")
-        ilength = ilength % BLOCK_SECTOR_SIZE;
-        if(!ilength || ilength + sizeof(e) > BLOCK_SECTOR_SIZE){
-            DPRINTF("ALLOCATING MORE SECTOR\n")
-            if(!inode_extend(dir->inode, 1)){
-                DPRINTF("FAILED TO ALLOCATE MORE SECTOR\n")
-                goto done;
-            }
-        }
-        DPRINTF("INCREASING LENGTH BY 1 ENTRY\n")
-        inode_set_length(dir->inode, ofs + sizeof(e));
-        if(inode_read_at(dir->inode, &e, sizeof(e), ofs) != sizeof(e))
-            goto done;
-    }
 
     /* Write slot. */
     e.in_use = true;
@@ -193,7 +178,6 @@ done:
 /*! Removes any entry for NAME in DIR.  Returns true if successful, false on
     failure, which occurs only if there is no file with the given NAME. */
 bool dir_remove(struct dir *dir, const char *name) {
-    DPRINTF("IN DIR REMOVE\n")
     struct dir_entry e;
     struct inode *inode = NULL;
     bool success = false;
@@ -207,33 +191,25 @@ bool dir_remove(struct dir *dir, const char *name) {
     /* Find directory entry. */
     if (!lookup(dir, name, &e, &ofs))
         goto done;
-    DPRINTF("TARGET FOUND\n")
     /* Open inode. */
     inode = inode_open(e.inode_sector);
     if (inode == NULL)
         goto done;
-    DPRINTF("INODE OPENED\n");
 
     // check that directory is empty and that non one is using it
     if(e.is_dir){
-        DPRINTF("TARGET IS DIR\n")
         if(inode_is_shared(inode))
             goto done;
-        DPRINTF("TARGET IS NOT OPEN BY OTHERS\n")
         to_delete = dir_open(inode);
         if(!to_delete)
             goto done;
-        DPRINTF("OPENED TARGET DIR\n")
         while(dir_readdir(to_delete, deletion_content)){
-            DPRINTF("READ: %s\n", to_delete)
             if(strcmp(deletion_content, PATH_WD) &&
                 strcmp(deletion_content, PATH_PARENT)){
-                DPRINTF("NON EMPTY CONTENT IS: %s\n", deletion_content)
                 goto done;
             }
                 
         }
-        DPRINTF("DIR IS EMPTY\n")
     }
 
     /* Erase directory entry. */
